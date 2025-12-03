@@ -23,12 +23,12 @@ jobs:
           PGUSER: ${{ secrets.SUPABASE_USER }}
           PGPASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
         run: |
-          pg_dump -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -F c -b -v -f backup_$(date +'%Y-%m-%d').dump
+          pg_dump -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -F c -b -v -f backups/backup_$(date +'%Y-%m-%d').dump
 
       - name: Commit backup
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add backup_*.dump
+          git add backups/backup_*.dump
           git commit -m "Backup $(date +'%Y-%m-%d')" || echo "No changes to commit"
           git push
