@@ -12,8 +12,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Create backups directory
+        run: mkdir -p backups
 
       - name: Dump database
         env:
