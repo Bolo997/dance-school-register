@@ -274,7 +274,6 @@ const Amministrazione: React.FC = () => {
           data={infoSito}
           onAdd={() => handleOpenDialog()}
           onEdit={handleOpenDialog}
-          onDelete={handleDelete}
           emptyMessage="Nessuna info presente"
         />
       )}
@@ -298,7 +297,6 @@ const Amministrazione: React.FC = () => {
           data={importiPreventivo}
           onAdd={() => handleOpenDialog()}
           onEdit={handleOpenDialog}
-          onDelete={handleDelete}
           emptyMessage="Nessun importo presente"
         />
       )}

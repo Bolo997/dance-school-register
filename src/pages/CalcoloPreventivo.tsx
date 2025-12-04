@@ -62,7 +62,7 @@ const CalcoloPreventivo: React.FC = () => {
 
 	const subtotalIscrizione = useMemo(() => {
 		const tipoNum = parseFloat(tipoValue) || 0;
-		return subtotalCorsi + tipoNum;
+		return subtotalCorsi + tipoNum + importoBase;
 	}, [subtotalCorsi, tipoValue]);
 
 	// Calcolo valori extra selezionati
