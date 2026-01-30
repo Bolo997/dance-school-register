@@ -14,13 +14,14 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useAuth } from '../contexts/AuthContext';
 import { Socio, InfoSito } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
+import Spinner from '../components/Spinner';
 
 const ModuloIscrizione: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { profile } = useAuth();
   const { data: soci, loading } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
-  const { data: infoSito } = useSupabaseData<InfoSito>('InfoSito');
+  const { data: infoSito, loading: loadingInfoSito } = useSupabaseData<InfoSito>('InfoSito');
   
   const [socio, setSocio] = useState<Socio | null>(null);
   const anno = infoSito.find(info => info.campo === 'anno')?.valore || '';
@@ -41,12 +42,8 @@ const ModuloIscrizione: React.FC = () => {
     window.print();
   };
 
-  if (loading) {
-    return (
-      <Container maxWidth="xl" sx={{ mt: 4 }}>
-        <Typography>Caricamento...</Typography>
-      </Container>
-    );
+  if (loading || loadingInfoSito) {
+    return <Spinner />;
   }
 
   if (!socio) {

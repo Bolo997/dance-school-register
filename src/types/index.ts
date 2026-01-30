@@ -16,6 +16,15 @@ export interface ImportoPreventivo {
   valore: string;
 }
 
+export interface Log {
+  id: string;
+  utente: string;
+  dataOperazione: string;
+  tipoOperazione: string;
+  lista: string;
+  elemento: string;
+}
+
 export interface Fattura {
   id: string;
   idSocio: string;
@@ -85,6 +94,7 @@ export interface Socio {
   email: string;
   iscrizione: boolean;
   modulo: boolean;
+  agonistico: boolean;
   dataIscrizione: string;
   quotaIscrizione: string;
   scadenzaTessera: string;

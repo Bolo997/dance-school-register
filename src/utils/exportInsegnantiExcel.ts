@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 
-export function exportFattureExcel(fatture: any[], columns: any[]): void {
-  const data = fatture.map((row: any) => {
+export function exportInsegnantiExcel(insegnanti: any[], columns: any[]): void {
+  const data = insegnanti.map((row: any) => {
     const out: Record<string, any> = {};
     columns.forEach((col: any) => {
       const value = row[col.key];
@@ -9,8 +9,9 @@ export function exportFattureExcel(fatture: any[], columns: any[]): void {
     });
     return out;
   });
+
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Fatture');
-  XLSX.writeFile(workbook, 'Fatture.xlsx');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Insegnanti');
+  XLSX.writeFile(workbook, 'Insegnanti.xlsx');
 }

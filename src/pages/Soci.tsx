@@ -22,6 +22,7 @@ import Divider from '@mui/material/Divider';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
+import SuccessDialog from '../components/SuccessDialog';
 import { Fattura, Socio } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
@@ -30,11 +31,12 @@ import { ERROR_MESSAGES } from '../constants';
 const Soci: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { data: soci } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
+  const { data: soci, loading: loadingSoci } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
   const { 
     data: fatture, 
     create: createFattura, 
-    update: updateFattura
+    update: updateFattura,
+    loading: loadingFatture
   } = useSupabaseData<Fattura>('Fatture', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
 
@@ -42,6 +44,7 @@ const Soci: React.FC = () => {
   const [editingFattura, setEditingFattura] = useState<Fattura | null>(null);
   const [form, setForm] = useState<Partial<Fattura>>({});
   const [loading, setLoading] = useState(false);
+  const [openSuccess, setOpenSuccess] = useState(false);
   
   // Stato per i pagamenti mensili
   const [meseSelezionato, setMeseSelezionato] = useState('');
@@ -200,6 +203,7 @@ const Soci: React.FC = () => {
     
     if (result.success) {
       handleCloseDialog();
+      setOpenSuccess(true);
     }
     setLoading(false);
   };
@@ -230,6 +234,12 @@ const Soci: React.FC = () => {
         Registro Soci
       </Typography>
 
+      {(loadingSoci || loadingFatture) && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <Button variant="contained" color="primary" onClick={() => navigate('/gestione-soci')}>
           Gestione Soci
@@ -251,6 +261,11 @@ const Soci: React.FC = () => {
         data={fattureConSoci}
         onEdit={handleOpenDialog}
         emptyMessage="Nessun socio presente"
+      />
+
+      <SuccessDialog
+        open={openSuccess}
+        onClose={() => setOpenSuccess(false)}
       />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

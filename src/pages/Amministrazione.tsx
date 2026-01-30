@@ -15,7 +15,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import WarningDialog from '../components/WarningDialog';
-import { UserProfile, InfoSito, TipoIscrizione, ImportoPreventivo } from '../types';
+import { UserProfile, InfoSito, TipoIscrizione, ImportoPreventivo, Log } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { ERROR_MESSAGES } from '../constants';
@@ -55,6 +55,7 @@ const Amministrazione: React.FC = () => {
   const { data: infoSito, create: createInfoSito, update: updateInfoSito, remove: removeInfoSito } = useSupabaseData<InfoSito>('InfoSito', { userName: profile?.userName || 'Unknown' });
   const { data: tipiIscrizione, create: createTipoIscrizione, update: updateTipoIscrizione, remove: removeTipoIscrizione } = useSupabaseData<TipoIscrizione>('TipoIscrizione', { userName: profile?.userName || 'Unknown' });
   const { data: importiPreventivo, create: createImportoPreventivo, update: updateImportoPreventivo, remove: removeImportoPreventivo } = useSupabaseData<ImportoPreventivo>('ImportiPreventivo', { userName: profile?.userName || 'Unknown' });
+  const { data: logs } = useSupabaseData<Log>('Logs', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
 
   const [tabValue, setTabValue] = useState(0);
@@ -68,10 +69,10 @@ const Amministrazione: React.FC = () => {
 
   const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-    if (newValue === 0) setCurrentSection('users');
-    if (newValue === 1) setCurrentSection('infoSito');
-    if (newValue === 2) setCurrentSection('tipoIscrizione');
-    if (newValue === 3) setCurrentSection('importiPreventivo');
+    if (newValue === 1) setCurrentSection('users');
+    if (newValue === 2) setCurrentSection('infoSito');
+    if (newValue === 3) setCurrentSection('tipoIscrizione');
+    if (newValue === 4) setCurrentSection('importiPreventivo');
   }, []);
 
   const handleOpenDialog = useCallback((item?: any) => {
@@ -221,6 +222,15 @@ const Amministrazione: React.FC = () => {
     { key: 'valore', label: 'Valore', width: '50%' },
   ];
 
+  const logsColumns = [
+    { key: 'id', label: 'ID', width: '10%' },
+    { key: 'utente', label: 'Utente', width: '15%' },
+    { key: 'dataOperazione', label: 'Data Operazione', width: '20%' },
+    { key: 'tipoOperazione', label: 'Tipo Operazione', width: '20%' },
+    { key: 'lista', label: 'Lista', width: '15%' },
+    { key: 'elemento', label: 'Elemento', width: '20%' },
+  ];
+
   if (profile?.role !== 'admin') {
     return (
       <Container maxWidth="xl" sx={{ mt: 4 }}>
@@ -248,6 +258,7 @@ const Amministrazione: React.FC = () => {
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tabValue} onChange={handleTabChange}>
+          <Tab label="Logs" />
           <Tab label="Utenti" />
           <Tab label="Info Sito" />
           <Tab label="Tipo Iscrizione" />
@@ -256,6 +267,15 @@ const Amministrazione: React.FC = () => {
       </Box>
 
       {tabValue === 0 && (
+        <DataTable
+          title="Logs"
+          columns={logsColumns}
+          data={logs}
+          emptyMessage="Nessun log presente"
+        />
+      )}
+
+      {tabValue === 1 && (
         <DataTable
           title="Utenti"
           columns={usersColumns}
@@ -267,7 +287,7 @@ const Amministrazione: React.FC = () => {
         />
       )}
 
-      {tabValue === 1 && (
+      {tabValue === 2 && (
         <DataTable
           title="Info Sito"
           columns={infoSitoColumns}
@@ -278,7 +298,7 @@ const Amministrazione: React.FC = () => {
         />
       )}
 
-      {tabValue === 2 && (
+      {tabValue === 3 && (
         <DataTable
           title="Tipo Iscrizione"
           columns={tipoIscrizioneColumns}
@@ -290,7 +310,7 @@ const Amministrazione: React.FC = () => {
         />
       )}
 
-      {tabValue === 3 && (
+      {tabValue === 4 && (
         <DataTable
           title="Importi Preventivo"
           columns={importiPreventivoColumns}

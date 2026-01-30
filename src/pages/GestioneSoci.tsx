@@ -5,7 +5,10 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
+import CircularProgress from '@mui/material/CircularProgress';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import Button from '@mui/material/Button';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,11 +18,13 @@ import ErrorDialog from '../components/ErrorDialog';
 import { Socio } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { exportSociExcel } from '../utils/exportSociExcel';
 
 const fixedColumns = [
   { key: 'scadenzaTessera', label: 'Scadenza Tessera', width: '110px' },
   { key: 'iscrizione', label: 'Iscrizione', width: '90px' },
   { key: 'modulo', label: 'Modulo', width: '90px' },
+  { key: 'agonistico', label: 'Agonistico', width: '110px' },
   { key: 'dataIscrizione', label: 'Data Iscrizione', width: '110px' },
   { key: 'quotaIscrizione', label: 'Quota Iscrizione', width: '110px', format: (v: string) => v ? `${v} €` : '' },
   { key: 'quotaMensile', label: 'Quota Mensile', width: '110px', format: (v: string) => v ? `${v} €` : '' },
@@ -51,7 +56,7 @@ const allColumns = [...fixedColumns, ...scrollableColumns];
 const GestioneSoci: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { data: soci, remove, reload } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
+  const { data: soci, loading: loadingSoci, remove, reload } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
   const { clearAllErrors } = useFormValidation();
 
   const [openDialog, setOpenDialog] = useState(false);
@@ -60,8 +65,8 @@ const GestioneSoci: React.FC = () => {
   const [openErrorDialog, setOpenErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [editingSocio, setEditingSocio] = useState<Socio | null>(null);
-  // Stato del form gestito dalla modale SocioFormDialog
-  const [loading, setLoading] = useState(false);
+  // Stato di caricamento per la cancellazione
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const handleOpenDialog = useCallback((socio?: Socio) => {
     setEditingSocio(socio || null);
@@ -89,7 +94,7 @@ const GestioneSoci: React.FC = () => {
 
   const handleConfirmDelete = useCallback(async () => {
     if (socioToDelete) {
-      setLoading(true);
+      setDeleteLoading(true);
       const result = await remove(socioToDelete);
       if (!result.success && result.error?.code === '23503') {
         setErrorMessage("Impossibile eliminare il socio perché ha delle fatture associate. Elimina prima le fatture.");
@@ -99,7 +104,7 @@ const GestioneSoci: React.FC = () => {
         setOpenConfirmDelete(false);
         setSocioToDelete(null);
       }
-      setLoading(false);
+      setDeleteLoading(false);
     }
   }, [socioToDelete, remove]);
   const handleCloseErrorDialog = useCallback(() => {
@@ -129,8 +134,24 @@ const GestioneSoci: React.FC = () => {
         <Typography variant="h5">
           Gestione Soci
         </Typography>
+        {profile?.role !== 'reader' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none', ml: 'auto' }}
+            onClick={() => exportSociExcel(soci, allColumns)}
+          >
+            Export Excel
+          </Button>
+        )}
       </Box>
 
+      {(loadingSoci || deleteLoading) ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
+          <CircularProgress />
+        </Box>
+      ) : (
       <DataTable
         title="Soci"
         columns={allColumns}
@@ -141,7 +162,7 @@ const GestioneSoci: React.FC = () => {
         onModulo={handleModulo}
         emptyMessage="Nessun socio presente"
         renderCell={(row, col) => {
-          if (col.key === 'iscrizione' || col.key === 'modulo') {
+          if (col.key === 'iscrizione' || col.key === 'modulo' || col.key === 'agonistico') {
             return (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 {row[col.key] ? (
@@ -167,6 +188,7 @@ const GestioneSoci: React.FC = () => {
           return row[col.key];
         }}
       />
+      )}
       <SocioFormDialog
         open={openDialog}
         onClose={handleCloseDialog}

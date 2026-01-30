@@ -20,5 +20,5 @@ export function exportSociExcel(soci: Socio[], columns: Column[]): void {
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Soci');
-  XLSX.writeFile(workbook, 'soci.xlsx');
+  XLSX.writeFile(workbook, 'Soci.xlsx');
 }

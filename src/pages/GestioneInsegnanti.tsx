@@ -6,6 +6,7 @@ import Box from '@mui/material/Box';
 import Dialog from '@mui/material/Dialog';
 import IconButton from '@mui/material/IconButton';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
@@ -16,6 +17,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import ErrorDialog from '../components/ErrorDialog';
+import SuccessDialog from '../components/SuccessDialog';
 import { Insegnante, Corso, CategoriaCorso } from '../types';
 import { PagamentoInsegnante } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
@@ -23,6 +25,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { formatPrice } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../constants';
 import { MenuItem } from '@mui/material';
+import { exportInsegnantiExcel } from '../utils/exportInsegnantiExcel';
 
 const formatDiscipline = (discipline: string[]) => {
   if (!discipline || discipline.length === 0) return '';
@@ -49,11 +52,32 @@ const insegnantiColumns = [
   { key: 'discipline', label: 'Discipline', format: formatDiscipline, width: '50%' },
 ];
 
+const insegnantiExcelColumns = [
+  { key: 'cognome', label: 'Cognome' },
+  { key: 'nome', label: 'Nome' },
+  {
+    key: 'discipline',
+    label: 'Discipline',
+    format: (discipline: string[]) => {
+      if (!discipline || discipline.length === 0) return '';
+      return discipline
+        .map((disc) => {
+          const parts = disc.split(';');
+          const materia = parts[0]?.trim() || '';
+          const ora = parts[1]?.trim() || '';
+          const importo = parts[2]?.trim() || '';
+          return `${materia} - ${ora}h - ${formatPrice(parseFloat(importo) || 0)}`;
+        })
+        .join('\n');
+    },
+  },
+];
+
 const GestioneInsegnanti: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { data: insegnanti, create, update, remove } = useSupabaseData<Insegnante>('Insegnanti', { userName: profile?.userName || 'Unknown' });
-  const { data: pagamentiInsegnanti } = useSupabaseData<PagamentoInsegnante>('PagamentoInsegnante', { userName: profile?.userName || 'Unknown' });
+  const { data: insegnanti, create, update, remove, loading: loadingInsegnanti } = useSupabaseData<Insegnante>('Insegnanti', { userName: profile?.userName || 'Unknown' });
+  const { data: pagamentiInsegnanti, loading: loadingPagamentiInsegnanti } = useSupabaseData<PagamentoInsegnante>('PagamentoInsegnante', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
   const [openDialog, setOpenDialog] = useState(false);
   const [openConfirmDelete, setOpenConfirmDelete] = useState(false);
@@ -78,6 +102,8 @@ const GestioneInsegnanti: React.FC = () => {
   const [oraTemp, setOraTemp] = useState('');
   const [importoTemp, setImportoTemp] = useState('');
   const [discipline, setDiscipline] = useState<{disciplina: string, ora: string, importo: string}[]>([]);
+  const [openSuccess, setOpenSuccess] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const parseDiscipline = useCallback((disciplinaArray: string[]) => {
     if (!disciplinaArray || disciplinaArray.length === 0) {
@@ -187,6 +213,7 @@ const GestioneInsegnanti: React.FC = () => {
     
     if (result.success) {
       handleCloseDialog();
+      setOpenSuccess(true);
     }
     setLoading(false);
   };
@@ -207,7 +234,7 @@ const GestioneInsegnanti: React.FC = () => {
         setInsegnanteToDelete(null);
         return;
       }
-      setLoading(true);
+      setDeleteLoading(true);
       const result = await remove(insegnanteToDelete);
       if (!result.success && result.error?.code === '23503') {
         setErrorMessage("Impossibile eliminare l'insegnante perché ha dei pagamenti associati. Elimina prima i pagamenti.");
@@ -215,7 +242,7 @@ const GestioneInsegnanti: React.FC = () => {
       }
       setOpenConfirmDelete(false);
       setInsegnanteToDelete(null);
-      setLoading(false);
+      setDeleteLoading(false);
     }
   }, [insegnanteToDelete, remove]);
 
@@ -239,7 +266,24 @@ const GestioneInsegnanti: React.FC = () => {
         <Typography variant="h5">
           Gestione Insegnanti
         </Typography>
+        {profile?.role !== 'reader' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none', ml: 'auto' }}
+            onClick={() => exportInsegnantiExcel(insegnantiOrdinati, insegnantiExcelColumns)}
+          >
+            Export Excel
+          </Button>
+        )}
       </Box>
+
+      {(loadingInsegnanti || loadingPagamentiInsegnanti || deleteLoading) && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 3 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
       <DataTable
         title="Insegnanti"
@@ -249,6 +293,11 @@ const GestioneInsegnanti: React.FC = () => {
         onEdit={handleOpenDialog}
         onDelete={handleDelete}
         emptyMessage="Nessun insegnante presente"
+      />
+
+      <SuccessDialog
+        open={openSuccess}
+        onClose={() => setOpenSuccess(false)}
       />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>

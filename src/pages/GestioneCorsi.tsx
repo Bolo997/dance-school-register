@@ -13,16 +13,69 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import WarningDialog from '../components/WarningDialog';
+import SuccessDialog from '../components/SuccessDialog';
 import { Corso, Sala, CategoriaCorso, Socio, Insegnante } from '../types';
 import { formatPrice, createOrario, validateTimeRange } from '../utils/helpers';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useTimeSlots } from '../hooks/useTimeSlots';
 import { ERROR_MESSAGES, GIORNI_SETTIMANA } from '../constants';
+import { exportCorsiExcel } from '../utils/exportCorsiExcel';
+
+const formatLezioni = (lezioni: string[]) => {
+  if (!lezioni || lezioni.length === 0) return '';
+  return (
+    <Box component="ul" sx={{ margin: 0, paddingLeft: 2 }}>
+      {lezioni.map((lezione, index) => {
+        const parts = lezione.split(';');
+        const giorno = parts[0]?.trim() || '';
+        const sala = parts[1]?.trim() || '';
+        const orario = parts[2]?.trim() || '';
+        return (
+          <li key={index}>
+            {giorno} - {sala} - {orario}
+          </li>
+        );
+      })}
+    </Box>
+  );
+};
+
+const corsiColumns = [
+  { key: 'nomeCorso', label: 'Nome Corso', width: '20%' },
+  { key: 'categoria', label: 'Categoria', width: '15%' },
+  { key: 'lezioni', label: 'Lezioni', format: formatLezioni, width: '35%' },
+  { key: 'prezzo', label: 'Prezzo', format: formatPrice, width: '10%' },
+  { key: 'oreSettimanali', label: 'Ore Sett.', width: '10%' }
+];
+
+const corsiExcelColumns = [
+  { key: 'nomeCorso', label: 'Nome Corso' },
+  { key: 'categoria', label: 'Categoria' },
+  {
+    key: 'lezioni',
+    label: 'Lezioni',
+    format: (lezioni: string[]) => {
+      if (!lezioni || lezioni.length === 0) return '';
+      return lezioni
+        .map((lezione) => {
+          const parts = lezione.split(';');
+          const giorno = parts[0]?.trim() || '';
+          const sala = parts[1]?.trim() || '';
+          const orario = parts[2]?.trim() || '';
+          return `${giorno} - ${sala} - ${orario}`;
+        })
+        .join('\n');
+    }
+  },
+  { key: 'prezzo', label: 'Prezzo', format: formatPrice },
+  { key: 'oreSettimanali', label: 'Ore Sett.' }
+];
 
 const GestioneCorsi: React.FC = () => {
   const navigate = useNavigate();
@@ -54,11 +107,12 @@ const GestioneCorsi: React.FC = () => {
   const [affectedSoci, setAffectedSoci] = useState<Socio[]>([]);
   const [loading, setLoading] = useState(false);
   const [affectedInsegnanti, setAffectedInsegnanti] = useState<Insegnante[]>([]);
+  const [openSuccess, setOpenSuccess] = useState(false);
   
   const [nomeCorso, setNomeCorso] = useState('');
-  const [prezzo, setPrezzo] = useState<number>(0);
+  const [prezzo, setPrezzo] = useState<string>('');
   const [categoria, setCategoria] = useState('');
-  const [oreSettimanali, setOreSettimanali] = useState<number>(0);
+  const [oreSettimanali, setOreSettimanali] = useState<string>('');
   
   // Stato per le lezioni
   const [giornoSettimana, setGiornoSettimana] = useState('');
@@ -95,16 +149,16 @@ const GestioneCorsi: React.FC = () => {
         setEditingCorso(corso);
       }
       setNomeCorso(corso.nomeCorso);
-      setPrezzo(corso.prezzo);
+      setPrezzo(corso.prezzo != null ? String(corso.prezzo) : '');
       setCategoria(corso.categoria);
-      setOreSettimanali(corso.oreSettimanali);
+      setOreSettimanali(corso.oreSettimanali != null ? String(corso.oreSettimanali) : '');
       parseLezioni(corso.lezioni || []);
     } else {
       setEditingCorso(null);
       setNomeCorso('');
-      setPrezzo(0);
+      setPrezzo('');
       setCategoria('');
-      setOreSettimanali(0);
+      setOreSettimanali('');
       setLezioni([]);
     }
     setGiornoSettimana('');
@@ -119,9 +173,9 @@ const GestioneCorsi: React.FC = () => {
     setOpenCorsoDialog(false);
     setEditingCorso(null);
     setNomeCorso('');
-    setPrezzo(0);
+    setPrezzo('');
     setCategoria('');
-    setOreSettimanali(0);
+    setOreSettimanali('');
     setLezioni([]);
     setGiornoSettimana('');
     setSalaSelezionata('');
@@ -198,9 +252,9 @@ const GestioneCorsi: React.FC = () => {
   const saveCorso = async () => {
     const corsoData = {
       nomeCorso,
-      prezzo,
+      prezzo: Number(prezzo) || 0,
       categoria,
-      oreSettimanali,
+      oreSettimanali: Number(oreSettimanali) || 0,
       lezioni: serializeLezioni(lezioni)
     };
 
@@ -222,6 +276,7 @@ const GestioneCorsi: React.FC = () => {
     
     if (result.success) {
       handleCloseCorsoDialog();
+      setOpenSuccess(true);
     }
     setLoading(false);
   };
@@ -232,9 +287,9 @@ const GestioneCorsi: React.FC = () => {
     // Prima salva il corso
     const corsoData = {
       nomeCorso,
-      prezzo,
+      prezzo: Number(prezzo) || 0,
       categoria,
-      oreSettimanali,
+      oreSettimanali: Number(oreSettimanali) || 0,
       lezioni: serializeLezioni(lezioni)
     };
     const result = await updateCorso(editingCorso!.id, corsoData);
@@ -274,6 +329,7 @@ const GestioneCorsi: React.FC = () => {
     
     if (result.success) {
       handleCloseCorsoDialog();
+      setOpenSuccess(true);
     }
     setLoading(false);
     setAffectedSoci([]);
@@ -341,26 +397,7 @@ const GestioneCorsi: React.FC = () => {
     setCorsoToDelete(null);
   }, []);
 
-  const formatLezioni = (lezioni: string[]) => {
-    if (!lezioni || lezioni.length === 0) return '';
-    return (
-      <Box component="ul" sx={{ margin: 0, paddingLeft: 2 }}>
-        {lezioni.map((lezione, index) => {
-          const parts = lezione.split(';');
-          const giorno = parts[0]?.trim() || '';
-          const sala = parts[1]?.trim() || '';
-          const orario = parts[2]?.trim() || '';
-          return (
-            <li key={index}>
-              {giorno} - {sala} - {orario}
-            </li>
-          );
-        })}
-      </Box>
-    );
-  };
-
-  const renderNomeCorsoCell = (row: Corso, col: any) => {
+  const renderNomeCorsoCell = useCallback((row: Corso, col: any) => {
     if (col.key !== 'nomeCorso') return undefined;
     const categoria = categorie.find(c => c.categoria === row.categoria);
     const colore = categoria?.colore || '#1976d2';
@@ -377,15 +414,20 @@ const GestioneCorsi: React.FC = () => {
         {row.nomeCorso}
       </Box>
     );
-  };
+  }, [categorie]);
 
-  const corsiColumns = [
-    { key: 'nomeCorso', label: 'Nome Corso', width: '20%' },
-    { key: 'categoria', label: 'Categoria', width: '15%' },
-    { key: 'lezioni', label: 'Lezioni', format: formatLezioni, width: '35%' },
-    { key: 'prezzo', label: 'Prezzo', format: formatPrice, width: '10%' },
-    { key: 'oreSettimanali', label: 'Ore Sett.', width: '10%' }
-  ];
+  const corsiTable = useMemo(() => (
+    <DataTable
+      title="Corsi"
+      columns={corsiColumns}
+      data={corsi}
+      onAdd={() => handleOpenCorsoDialog()}
+      onEdit={handleOpenCorsoDialog}
+      onDelete={handleDeleteCorso}
+      emptyMessage="Nessun corso presente"
+      renderCell={renderNomeCorsoCell}
+    />
+  ), [corsi, corsiColumns, handleOpenCorsoDialog, handleDeleteCorso, renderNomeCorsoCell]);
 
   return (
     <Container maxWidth="xl">
@@ -400,17 +442,23 @@ const GestioneCorsi: React.FC = () => {
         <Typography variant="h5">
           Gestione Corsi
         </Typography>
+        {profile?.role !== 'reader' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none', ml: 'auto' }}
+            onClick={() => exportCorsiExcel(corsi, corsiExcelColumns)}
+          >
+            Export Excel
+          </Button>
+        )}
       </Box>
+      {corsiTable}
 
-      <DataTable
-        title="Corsi"
-        columns={corsiColumns}
-        data={corsi}
-        onAdd={() => handleOpenCorsoDialog()}
-        onEdit={handleOpenCorsoDialog}
-        onDelete={handleDeleteCorso}
-        emptyMessage="Nessun corso presente"
-        renderCell={renderNomeCorsoCell}
+      <SuccessDialog
+        open={openSuccess}
+        onClose={() => setOpenSuccess(false)}
       />
 
       <Dialog open={openCorsoDialog} onClose={handleCloseCorsoDialog} maxWidth="md" fullWidth>
@@ -460,14 +508,15 @@ const GestioneCorsi: React.FC = () => {
                 type="number"
                 fullWidth
                 value={prezzo}
-                onChange={(e) => setPrezzo(Number(e.target.value))}
+                onChange={(e) => setPrezzo(e.target.value)}
               />
               <TextField
                 label="Ore Settimanali"
                 type="number"
                 fullWidth
                 value={oreSettimanali}
-                onChange={(e) => setOreSettimanali(Number(e.target.value))}
+                inputProps={{ step: 0.5 }}
+                onChange={(e) => setOreSettimanali(e.target.value)}
               />
             </Box>
             

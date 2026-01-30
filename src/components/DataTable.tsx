@@ -27,7 +27,7 @@ interface DataTableProps {
   columns: Column[];
   data: any[];
   onAdd?: () => void;
-  onEdit: (item: any) => void;
+  onEdit?: (item: any) => void;
   onDelete?: (id: string) => void;
   onCopy?: (item: any) => void;
   onModulo?: (item: any) => void;
@@ -116,12 +116,15 @@ const DataTable = React.memo<DataTableProps>(({
   // Funzione per generare le azioni
   const renderActions = (item: any) => {
     if (profile?.role === 'reader' || (profile.role === "contribute" && !location.pathname.includes("soci"))) return null;
+    if (!onEdit && !onCopy && !onModulo && !onDelete) return null;
     return (
       <Tooltip title={getTooltipTitle(item)} arrow placement="right">
         <Box sx={{ display: 'inline-flex' }}>
-          <IconButton size="small" onClick={() => onEdit(item)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
+          {onEdit && (
+            <IconButton size="small" onClick={() => onEdit(item)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          )}
           {onCopy && (
             <IconButton size="small" onClick={() => onCopy(item)} title="Copia">
               <ContentCopyIcon fontSize="small" />

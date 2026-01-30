@@ -24,6 +24,7 @@ import IconButton from '@mui/material/IconButton';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +33,8 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { Insegnante, PagamentoInsegnante } from '../types';
 import { formatPrice } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../constants';
+import SuccessDialog from '../components/SuccessDialog';
+import { exportPagamentiInsegnantiExcel } from '../utils/exportPagamentiInsegnantiExcel';
 
 const MESI = ['Settembre', 'Ottobre', 'Novembre', 'Dicembre', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio'];
 const SETTIMANE = [1, 2, 3, 4, 5];
@@ -39,14 +42,16 @@ const SETTIMANE = [1, 2, 3, 4, 5];
 const Insegnanti: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { data: insegnanti } = useSupabaseData<Insegnante>('Insegnanti', { userName: profile?.userName || 'Unknown' });
-  const { data: pagamenti, create: createPagamento, update: updatePagamento, remove: removePagamento } = useSupabaseData<PagamentoInsegnante>('PagamentiInsegnanti', { userName: profile?.userName || 'Unknown' });
+  const { data: insegnanti, loading: loadingInsegnanti } = useSupabaseData<Insegnante>('Insegnanti', { userName: profile?.userName || 'Unknown' });
+  const { data: pagamenti, create: createPagamento, update: updatePagamento, remove: removePagamento, loading: loadingPagamenti } = useSupabaseData<PagamentoInsegnante>('PagamentiInsegnanti', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
   const [selectedTab, setSelectedTab] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingPagamento, setEditingPagamento] = useState<PagamentoInsegnante | null>(null);
   const [form, setForm] = useState<Partial<PagamentoInsegnante>>({});
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [openSuccess, setOpenSuccess] = useState(false);
 
   // Rimuovi duplicati basandoti sul cognome e ordina alfabeticamente
   const insegnantiUnici = useMemo(() => {
@@ -143,15 +148,16 @@ const Insegnanti: React.FC = () => {
     
     if (result.success) {
       handleCloseDialog();
+      setOpenSuccess(true);
     }
     setLoading(false);
   };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Sei sicuro di voler eliminare questo pagamento?')) {
-      setLoading(true);
+      setDeleteLoading(true);
       await removePagamento(id);
-      setLoading(false);
+      setDeleteLoading(false);
     }
   };
 
@@ -168,14 +174,56 @@ const Insegnanti: React.FC = () => {
     return pagamentiMese.reduce((sum, p) => sum + (p.compensoLezione || 0), 0);
   };
 
+  const pagamentiExcelColumns = [
+    { key: 'cognome', label: 'Cognome' },
+    { key: 'nome', label: 'Nome' },
+    { key: 'disciplina', label: 'Disciplina' },
+    { key: 'settimana', label: 'Settimana' },
+    { key: 'mese', label: 'Mese' },
+    { key: 'data', label: 'Data' },
+    { key: 'compensoLezione', label: 'Compenso', format: (val: number) => formatPrice(val || 0) },
+    { key: 'tariffa', label: 'Tariffa' },
+  ];
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
         Registro Insegnanti
       </Typography>
-      <Button variant="contained" color="primary" sx={{ mb: 3 }} onClick={() => navigate('/gestione-insegnanti')}>
-        Gestione Insegnanti
-      </Button>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <Button variant="contained" color="primary" onClick={() => navigate('/gestione-insegnanti')}>
+          Gestione Insegnanti
+        </Button>
+        {profile?.role !== 'reader' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none' }}
+            onClick={() => {
+              if (!insegnanteSelezionato) return;
+              const rows = pagamentiInsegnante.map((p) => ({
+                cognome: insegnanteSelezionato.cognome,
+                nome: insegnanteSelezionato.nome,
+                disciplina: p.disciplina,
+                settimana: p.settimana,
+                mese: p.mese,
+                data: new Date(p.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                compensoLezione: p.compensoLezione,
+                tariffa: p.tariffa,
+              }));
+              exportPagamentiInsegnantiExcel(rows, pagamentiExcelColumns);
+            }}
+          >
+            Export Excel
+          </Button>
+        )}
+      </Box>
+      {(loadingInsegnanti || loadingPagamenti || deleteLoading) && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 3 }}>
+          <CircularProgress />
+        </Box>
+      )}
       
       {insegnantiUnici.length > 0 && (
         <>
@@ -352,6 +400,11 @@ const Insegnanti: React.FC = () => {
           )}
         </>
       )}
+
+      <SuccessDialog
+        open={openSuccess}
+        onClose={() => setOpenSuccess(false)}
+      />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingPagamento ? 'Modifica Pagamento' : 'Nuovo Pagamento'}</DialogTitle>

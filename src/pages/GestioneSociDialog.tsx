@@ -11,11 +11,36 @@ import {
     FormControlLabel,
     Chip,
     Box,
-    Typography
+    Typography,
+    CircularProgress
 } from '@mui/material';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useSupabaseData } from '../hooks/useSupabaseData';
+import SuccessDialog from '../components/SuccessDialog';
+
+// Converte una data da formato dd/mm/yyyy a yyyy-MM-dd per gli input type="date"
+const normalizeDateForInput = (value?: string) => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+    if (match) {
+        const [, dd, mm, yyyy] = match;
+        return `${yyyy}-${mm}-${dd}`;
+    }
+    return value;
+};
+
+// Converte una data da formato yyyy-MM-dd a dd/mm/yyyy per il salvataggio su Supabase
+const formatDateForSave = (value?: string) => {
+    if (!value) return '';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [yyyy, mm, dd] = value.split('-');
+        return `${dd}/${mm}/${yyyy}`;
+    }
+    return value;
+};
 
 const AnagraficaFields = ({ form, handleField, errors }: any) => (
     <>
@@ -51,6 +76,7 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <FormControlLabel control={<Checkbox checked={form.iscrizione === true} onChange={e => handleField('iscrizione', e.target.checked)} />} label="Iscrizione" labelPlacement="start" />
                 <FormControlLabel control={<Checkbox checked={form.modulo === true} onChange={e => handleField('modulo', e.target.checked)} />} label="Modulo" labelPlacement="start" />
+                <FormControlLabel control={<Checkbox checked={form.agonistico === true} onChange={e => handleField('agonistico', e.target.checked)} />} label="Agonistico" labelPlacement="start" />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField label="Data Iscrizione" type="date" sx={{ flex: 1 }} value={form.dataIscrizione || ''} onChange={e => handleField('dataIscrizione', e.target.value)} InputLabelProps={{ shrink: true }} />
@@ -157,10 +183,19 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
         const { errors, validate, setError, clearAllErrors } = useFormValidation();
         const [showErrors, setShowErrors] = useState(false);
         const [loading, setLoading] = useState(false);
+        const [openSuccess, setOpenSuccess] = useState(false);
 
     useEffect(() => {
         if (open) {
-            setForm(initialForm || {});
+            const baseForm = initialForm || {};
+            const normalizedForm = {
+                ...baseForm,
+                dataNascita: normalizeDateForInput(baseForm.dataNascita),
+                dataIscrizione: normalizeDateForInput(baseForm.dataIscrizione),
+                scadenzaTessera: normalizeDateForInput(baseForm.scadenzaTessera),
+                scadenzaCertificato: normalizeDateForInput(baseForm.scadenzaCertificato),
+            };
+            setForm(normalizedForm);
             clearAllErrors();
             setShowErrors(false);
         }
@@ -204,6 +239,10 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
         const modificato = editingSocio ?`${userName} - ${nowStr}` : "";
         const formToSave = {
             ...form,
+            dataNascita: formatDateForSave(form.dataNascita),
+            dataIscrizione: formatDateForSave(form.dataIscrizione),
+            scadenzaTessera: formatDateForSave(form.scadenzaTessera),
+            scadenzaCertificato: formatDateForSave(form.scadenzaCertificato),
             corsi: Array.isArray(form.corsi)
                 ? form.corsi.join(';')
                 : (typeof form.corsi === 'string' ? form.corsi : ''),
@@ -228,25 +267,34 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
             if (onSave) onSave(formToSave);
             onClose();
             setShowErrors(false);
+            setOpenSuccess(true);
         }
     }, [form, onSave, onClose, validate, editingSocio, create, update, setError, userName]);
 
     return (
-        <Dialog open={open} onClose={() => { onClose(); setShowErrors(false); }} maxWidth="md" fullWidth>
-            <DialogTitle>Nuovo Socio</DialogTitle>
-            <DialogContent>
-                <Stack spacing={3} sx={{ mt: 1 }}>
-                    <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} />
-                    <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} categorie={categorie} corsi={corsi} />
-                    <GenitoreFields form={form} handleField={handleField} />
-                    <NoteFields form={form} handleField={handleField} />
-                </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={() => { onClose(); setShowErrors(false); }}>Annulla</Button>
-                <Button variant="contained" onClick={handleSave} disabled={loading}>Salva</Button>
-            </DialogActions>
-        </Dialog>
+        <>
+            <Dialog open={open} onClose={() => { onClose(); setShowErrors(false); }} maxWidth="md" fullWidth>
+                <DialogTitle>Nuovo Socio</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={3} sx={{ mt: 1 }}>
+                        <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} />
+                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} categorie={categorie} corsi={corsi} />
+                        <GenitoreFields form={form} handleField={handleField} />
+                        <NoteFields form={form} handleField={handleField} />
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => { onClose(); setShowErrors(false); }}>Annulla</Button>
+                    <Button variant="contained" onClick={handleSave} disabled={loading}>
+                        {loading ? <CircularProgress size={24} /> : 'Salva'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <SuccessDialog
+                open={openSuccess}
+                onClose={() => setOpenSuccess(false)}
+            />
+        </>
     );
 };
 

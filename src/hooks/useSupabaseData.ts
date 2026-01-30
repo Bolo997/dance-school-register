@@ -17,7 +17,7 @@ interface UseSupabaseDataReturn<T> {
   removeAll?: () => Promise<{ success: boolean; error?: any }>;
 }
 
-const TABLES_WITHOUT_TIMESTAMPS = ['Users', 'Role', 'InfoSito', 'TipoIscrizione'];
+const TABLES_WITHOUT_TIMESTAMPS = ['Users', 'Role', 'InfoSito', 'TipoIscrizione', 'Logs'];
 
 export function useSupabaseData<T extends { id: string }>(
   tableName: string,
