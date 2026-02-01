@@ -13,7 +13,7 @@ export const SUCCESS_MESSAGES = {
 
 export const VALIDATION_PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  PHONE: /^[0-9+\s()-]{6,20}$/,
+  PHONE: /^[0-9]{6,20}$/,
 };
 
 export const TIME_SLOT_CONFIG = {

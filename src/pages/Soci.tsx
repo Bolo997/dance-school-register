@@ -27,6 +27,7 @@ import { Fattura, Socio } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { ERROR_MESSAGES } from '../constants';
+import { logOperation } from '../utils/logs';
 
 const Soci: React.FC = () => {
   const navigate = useNavigate();
@@ -195,13 +196,26 @@ const Soci: React.FC = () => {
     };
 
     let result;
-    if (editingFattura && editingFattura.id) {
+    const isUpdate = !!(editingFattura && editingFattura.id);
+    if (isUpdate) {
       result = await updateFattura(editingFattura.id, fatturaData);
     } else {
       result = await createFattura(fatturaData);
     }
     
     if (result.success) {
+      if (isUpdate) {
+        const elemento = `socio ${fatturaData.idSocio}: ${fatturaData.pagamenti}`;
+        logOperation({
+          utente: profile?.userName || 'Unknown',
+          tipoOperazione: 'Modifica',
+          lista: 'Fatture',
+          elemento,
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
       handleCloseDialog();
       setOpenSuccess(true);
     }

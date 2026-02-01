@@ -60,8 +60,11 @@ export function useSupabaseData<T extends { id: string }>(
     const { error: insertError } = await supabase.from(tableName).insert(itemToInsert);
     
     if (insertError) return { success: false, error: insertError };
-    
-    await reload();
+    // Ricarica i dati in background per migliorare la reattività della UI
+    reload().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Errore durante il reload dopo create:', err);
+    });
     return { success: true };
   }, [tableName, userName, reload]);
 
@@ -75,8 +78,11 @@ export function useSupabaseData<T extends { id: string }>(
     const { error: updateError } = await supabase.from(tableName).update(itemToUpdate).eq('id', id);
     
     if (updateError) return { success: false, error: updateError };
-    
-    await reload();
+    // Ricarica i dati in background per migliorare la reattività della UI
+    reload().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Errore durante il reload dopo update:', err);
+    });
     return { success: true };
   }, [tableName, userName, reload]);
 
@@ -84,8 +90,11 @@ export function useSupabaseData<T extends { id: string }>(
     const { error: deleteError } = await supabase.from(tableName).delete().eq('id', id);
     
     if (deleteError) return { success: false, error: deleteError };
-    
-    await reload();
+    // Ricarica i dati in background per migliorare la reattività della UI
+    reload().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Errore durante il reload dopo delete:', err);
+    });
     return { success: true };
   }, [tableName, reload]);
 
@@ -93,7 +102,11 @@ export function useSupabaseData<T extends { id: string }>(
     // Supabase/Postgres richiede una WHERE, usiamo gt('id', 0) per eliminare tutti
     const { error: deleteError } = await supabase.from(tableName).delete().gt('id', 0);
     if (deleteError) return { success: false, error: deleteError };
-    await reload();
+    // Ricarica i dati in background per migliorare la reattività della UI
+    reload().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Errore durante il reload dopo removeAll:', err);
+    });
     return { success: true };
   }, [tableName, reload]);
 

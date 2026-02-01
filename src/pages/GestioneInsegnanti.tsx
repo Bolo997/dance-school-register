@@ -26,6 +26,7 @@ import { formatPrice } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../constants';
 import { MenuItem } from '@mui/material';
 import { exportInsegnantiExcel } from '../utils/exportInsegnantiExcel';
+import { logOperation } from '../utils/logs';
 
 const formatDiscipline = (discipline: string[]) => {
   if (!discipline || discipline.length === 0) return '';
@@ -193,7 +194,8 @@ const GestioneInsegnanti: React.FC = () => {
     };
 
     let result;
-    if (editingInsegnante) {
+    const isUpdate = !!editingInsegnante;
+    if (isUpdate) {
       result = await update(editingInsegnante.id, insegnanteData);
     } else {
       result = await create(insegnanteData);
@@ -212,6 +214,17 @@ const GestioneInsegnanti: React.FC = () => {
     }
     
     if (result.success) {
+      const elemento = `${insegnanteData.cognome || ''} ${insegnanteData.nome || ''}`.trim();
+      const tipoOperazione = isUpdate ? 'Modifica' : 'Creazione';
+      logOperation({
+        utente: profile?.userName || 'Unknown',
+        tipoOperazione,
+        lista: 'Insegnanti',
+        elemento,
+      }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Errore durante la scrittura del log:', error);
+      });
       handleCloseDialog();
       setOpenSuccess(true);
     }
@@ -235,10 +248,22 @@ const GestioneInsegnanti: React.FC = () => {
         return;
       }
       setDeleteLoading(true);
+      const insegnante = insegnanti.find((i) => i.id === insegnanteToDelete);
       const result = await remove(insegnanteToDelete);
       if (!result.success && result.error?.code === '23503') {
         setErrorMessage("Impossibile eliminare l'insegnante perché ha dei pagamenti associati. Elimina prima i pagamenti.");
         setOpenErrorDialog(true);
+      } else if (result.success && insegnante) {
+        const elemento = `${insegnante.cognome} ${insegnante.nome}`.trim();
+        logOperation({
+          utente: profile?.userName || 'Unknown',
+          tipoOperazione: 'Eliminazione',
+          lista: 'Insegnanti',
+          elemento,
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
       }
       setOpenConfirmDelete(false);
       setInsegnanteToDelete(null);

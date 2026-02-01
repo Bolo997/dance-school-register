@@ -19,6 +19,7 @@ import { Socio } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { exportSociExcel } from '../utils/exportSociExcel';
+import { logOperation } from '../utils/logs';
 
 const fixedColumns = [
   { key: 'scadenzaTessera', label: 'Scadenza Tessera', width: '110px' },
@@ -56,7 +57,14 @@ const allColumns = [...fixedColumns, ...scrollableColumns];
 const GestioneSoci: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { data: soci, loading: loadingSoci, remove, reload } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
+  const {
+    data: soci,
+    loading: loadingSoci,
+    remove,
+    reload,
+    create: createSocio,
+    update: updateSocio,
+  } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
   const { clearAllErrors } = useFormValidation();
 
   const [openDialog, setOpenDialog] = useState(false);
@@ -80,11 +88,8 @@ const GestioneSoci: React.FC = () => {
     clearAllErrors();
   }, [clearAllErrors]);
 
-  // La modale gestisce tutto il salvataggio e la validazione
-  // La prop onSave serve solo per chiudere la modale e aggiornare la UI
   const handleDialogSave = async () => {
     handleCloseDialog();
-    await reload();
   };
 
   const handleDelete = useCallback((id: string) => {
@@ -95,18 +100,31 @@ const GestioneSoci: React.FC = () => {
   const handleConfirmDelete = useCallback(async () => {
     if (socioToDelete) {
       setDeleteLoading(true);
+      const socio = soci.find((s) => s.id === socioToDelete);
       const result = await remove(socioToDelete);
       if (!result.success && result.error?.code === '23503') {
         setErrorMessage("Impossibile eliminare il socio perché ha delle fatture associate. Elimina prima le fatture.");
         setOpenErrorDialog(true);
         setOpenConfirmDelete(false);
       } else {
+        if (result.success && socio) {
+          const elemento = `${socio.cognome} ${socio.nome}`.trim();
+          logOperation({
+            utente: profile?.userName || 'Unknown',
+            tipoOperazione: 'Eliminazione',
+            lista: 'Soci',
+            elemento,
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
         setOpenConfirmDelete(false);
         setSocioToDelete(null);
       }
       setDeleteLoading(false);
     }
-  }, [socioToDelete, remove]);
+  }, [socioToDelete, remove, soci, profile]);
   const handleCloseErrorDialog = useCallback(() => {
     setOpenErrorDialog(false);
     setErrorMessage('');
@@ -194,6 +212,8 @@ const GestioneSoci: React.FC = () => {
         onClose={handleCloseDialog}
         initialForm={editingSocio || {}}
         editingSocio={editingSocio}
+        createSocio={createSocio}
+        updateSocio={updateSocio}
         onSave={handleDialogSave}
       />
 

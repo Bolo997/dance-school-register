@@ -26,6 +26,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { useTimeSlots } from '../hooks/useTimeSlots';
 import { ERROR_MESSAGES, GIORNI_SETTIMANA } from '../constants';
 import { exportCorsiExcel } from '../utils/exportCorsiExcel';
+import { logOperation } from '../utils/logs';
 
 const formatLezioni = (lezioni: string[]) => {
   if (!lezioni || lezioni.length === 0) return '';
@@ -275,6 +276,16 @@ const GestioneCorsi: React.FC = () => {
     }
     
     if (result.success) {
+      const tipoOperazione = editingCorso ? 'Modifica' : 'Creazione';
+      logOperation({
+        utente: profile?.userName || 'Unknown',
+        tipoOperazione,
+        lista: 'Corsi',
+        elemento: nomeCorso
+      }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Errore durante la scrittura del log:', error);
+      });
       handleCloseCorsoDialog();
       setOpenSuccess(true);
     }
@@ -328,6 +339,15 @@ const GestioneCorsi: React.FC = () => {
     }
     
     if (result.success) {
+      logOperation({
+        utente: profile?.userName || 'Unknown',
+        tipoOperazione: 'Modifica',
+        lista: 'Corsi',
+        elemento: nomeCorso
+      }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Errore durante la scrittura del log:', error);
+      });
       handleCloseCorsoDialog();
       setOpenSuccess(true);
     }
@@ -384,7 +404,18 @@ const GestioneCorsi: React.FC = () => {
         );
       }
       
-      await removeCorso(corsoToDelete);
+      const deleteResult = await removeCorso(corsoToDelete);
+      if (deleteResult.success && corsoToRemove) {
+        logOperation({
+          utente: profile?.userName || 'Unknown',
+          tipoOperazione: 'Eliminazione',
+          lista: 'Corsi',
+          elemento: corsoToRemove.nomeCorso
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
       setLoading(false);
       setOpenConfirmDelete(false);
       setCorsoToDelete(null);

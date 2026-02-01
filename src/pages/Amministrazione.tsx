@@ -26,11 +26,15 @@ const Amministrazione: React.FC = () => {
     const { removeAll: removeAllPagamenti } = useSupabaseData('PagamentiInsegnanti');
     const [openConfirmFatture, setOpenConfirmFatture] = useState(false);
     const [openConfirmPagamenti, setOpenConfirmPagamenti] = useState(false);
+    const [openConfirmLogs, setOpenConfirmLogs] = useState(false);
     const handleSvuotaFatture = useCallback(() => {
       setOpenConfirmFatture(true);
     }, []);
     const handleSvuotaPagamenti = useCallback(() => {
       setOpenConfirmPagamenti(true);
+    }, []);
+    const handleSvuotaLogs = useCallback(() => {
+      setOpenConfirmLogs(true);
     }, []);
     const handleConfirmSvuotaFatture = useCallback(async () => {
       setLoading(true);
@@ -50,12 +54,15 @@ const Amministrazione: React.FC = () => {
     const handleCancelSvuotaPagamenti = useCallback(() => {
       setOpenConfirmPagamenti(false);
     }, []);
+    const handleCancelSvuotaLogs = useCallback(() => {
+      setOpenConfirmLogs(false);
+    }, []);
   const { profile } = useAuth();
   const { data: users, create: createUser, update: updateUser, remove: removeUser } = useSupabaseData<UserProfile>('Users', { userName: profile?.userName || 'Unknown' });
   const { data: infoSito, create: createInfoSito, update: updateInfoSito, remove: removeInfoSito } = useSupabaseData<InfoSito>('InfoSito', { userName: profile?.userName || 'Unknown' });
   const { data: tipiIscrizione, create: createTipoIscrizione, update: updateTipoIscrizione, remove: removeTipoIscrizione } = useSupabaseData<TipoIscrizione>('TipoIscrizione', { userName: profile?.userName || 'Unknown' });
   const { data: importiPreventivo, create: createImportoPreventivo, update: updateImportoPreventivo, remove: removeImportoPreventivo } = useSupabaseData<ImportoPreventivo>('ImportiPreventivo', { userName: profile?.userName || 'Unknown' });
-  const { data: logs } = useSupabaseData<Log>('Logs', { userName: profile?.userName || 'Unknown' });
+  const { data: logs, removeAll: removeAllLogs } = useSupabaseData<Log>('Logs', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
 
   const [tabValue, setTabValue] = useState(0);
@@ -66,6 +73,13 @@ const Amministrazione: React.FC = () => {
   const [form, setForm] = useState<any>({});
   const [currentSection, setCurrentSection] = useState<'users' | 'infoSito' | 'tipoIscrizione' | 'importiPreventivo'>('users');
   const [loading, setLoading] = useState(false);
+
+  const handleConfirmSvuotaLogs = useCallback(async () => {
+    setLoading(true);
+    if (removeAllLogs) await removeAllLogs();
+    setOpenConfirmLogs(false);
+    setLoading(false);
+  }, [removeAllLogs]);
 
   const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -267,12 +281,27 @@ const Amministrazione: React.FC = () => {
       </Box>
 
       {tabValue === 0 && (
-        <DataTable
-          title="Logs"
-          columns={logsColumns}
-          data={logs}
-          emptyMessage="Nessun log presente"
-        />
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="subtitle1">
+              Numero elementi: {logs?.length ?? 0}
+            </Typography>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleSvuotaLogs}
+              sx={{ fontWeight: 600 }}
+            >
+              Svuota Logs
+            </Button>
+          </Box>
+          <DataTable
+            title="Logs"
+            columns={logsColumns}
+            data={logs}
+            emptyMessage="Nessun log presente"
+          />
+        </>
       )}
 
       {tabValue === 1 && (
@@ -457,6 +486,15 @@ const Amministrazione: React.FC = () => {
         message="Sei sicuro di voler svuotare tutti i pagamenti insegnanti? L'operazione è irreversibile."
         onConfirm={handleConfirmSvuotaPagamenti}
         onCancel={handleCancelSvuotaPagamenti}
+        confirmText="Svuota"
+        confirmColor="error"
+      />
+      <WarningDialog
+        open={openConfirmLogs}
+        title="Conferma svuotamento"
+        message="Sei sicuro di voler svuotare tutti i logs? L'operazione è irreversibile."
+        onConfirm={handleConfirmSvuotaLogs}
+        onCancel={handleCancelSvuotaLogs}
         confirmText="Svuota"
         confirmColor="error"
       />

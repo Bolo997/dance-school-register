@@ -16,8 +16,9 @@ import {
 } from '@mui/material';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFormValidation } from '../hooks/useFormValidation';
-import { useSupabaseData } from '../hooks/useSupabaseData';
 import SuccessDialog from '../components/SuccessDialog';
+import { VALIDATION_PATTERNS } from '../constants';
+import { logOperation } from '../utils/logs';
 
 // Converte una data da formato dd/mm/yyyy a yyyy-MM-dd per gli input type="date"
 const normalizeDateForInput = (value?: string) => {
@@ -69,7 +70,7 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
     </>
 );
 
-const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie = [], corsi = [] }: any) => (
+const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie = [], corsi = [], errors = {} }: any) => (
     <>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main', mt: 2, pb: 1, borderBottom: 2, borderColor: 'primary.main' }}>Iscrizione</Typography>
         <Stack spacing={2}>
@@ -79,9 +80,36 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
                 <FormControlLabel control={<Checkbox checked={form.agonistico === true} onChange={e => handleField('agonistico', e.target.checked)} />} label="Agonistico" labelPlacement="start" />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField label="Data Iscrizione" type="date" sx={{ flex: 1 }} value={form.dataIscrizione || ''} onChange={e => handleField('dataIscrizione', e.target.value)} InputLabelProps={{ shrink: true }} />
-                <TextField label="Scadenza Tessera" type="date" sx={{ flex: 1 }} value={form.scadenzaTessera || ''} onChange={e => handleField('scadenzaTessera', e.target.value)} InputLabelProps={{ shrink: true }} />
-                <TextField label="Scadenza Certificato" type="date" sx={{ flex: 1 }} value={form.scadenzaCertificato || ''} onChange={e => handleField('scadenzaCertificato', e.target.value)} InputLabelProps={{ shrink: true }} />
+                <TextField
+                    label="Data Iscrizione"
+                    type="date"
+                    sx={{ flex: 1 }}
+                    value={form.dataIscrizione || ''}
+                    onChange={e => handleField('dataIscrizione', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.dataIscrizione}
+                    helperText={errors.dataIscrizione}
+                />
+                <TextField
+                    label="Scadenza Tessera"
+                    type="date"
+                    sx={{ flex: 1 }}
+                    value={form.scadenzaTessera || ''}
+                    onChange={e => handleField('scadenzaTessera', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.scadenzaTessera}
+                    helperText={errors.scadenzaTessera}
+                />
+                <TextField
+                    label="Scadenza Certificato"
+                    type="date"
+                    sx={{ flex: 1 }}
+                    value={form.scadenzaCertificato || ''}
+                    onChange={e => handleField('scadenzaCertificato', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.scadenzaCertificato}
+                    helperText={errors.scadenzaCertificato}
+                />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField label="Quota Iscrizione €" type="number" sx={{ flex: 1 }} value={form.quotaIscrizione || ''} onChange={e => handleField('quotaIscrizione', e.target.value)} />
@@ -173,13 +201,12 @@ const NoteFields = ({ form, handleField }: any) => (
     </>
 );
 
-const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: any) => {
-        const { profile } = require('../contexts/AuthContext').useAuth();
-        const userName = profile?.userName || 'unknown';
-        const [form, setForm] = useState<any>(initialForm || {});
-        const { data: corsi } = useSupabaseData('Corsi');
-        const { data: categorie } = useSupabaseData('CategorieCorsi');
-        const { create, update } = useSupabaseData('Soci', { userName });
+const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, createSocio, updateSocio }: any) => {
+    const { profile } = require('../contexts/AuthContext').useAuth();
+    const userName = profile?.userName || 'unknown';
+    const [form, setForm] = useState<any>(initialForm || {});
+    const { data: corsi } = require('../hooks/useSupabaseData').useSupabaseData('Corsi');
+    const { data: categorie } = require('../hooks/useSupabaseData').useSupabaseData('CategorieCorsi');
         const { errors, validate, setError, clearAllErrors } = useFormValidation();
         const [showErrors, setShowErrors] = useState(false);
         const [loading, setLoading] = useState(false);
@@ -214,46 +241,82 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
         setForm((prev: Record<string, any>) => ({ ...prev, [field]: value }));
     }, []);
 
-    // Regole di validazione per i campi anagrafici obbligatori
+    // Regole di validazione per i campi anagrafici e principali
     const anagraficaRules = {
         nome: { required: true, message: 'Il nome è obbligatorio' },
         cognome: { required: true, message: 'Il cognome è obbligatorio' },
         codFiscale: { required: true, message: 'Il codice fiscale è obbligatorio' },
-        dataNascita: { required: true, message: 'La data di nascita è obbligatoria' },
+        dataNascita: {
+            required: true,
+            message: 'La data di nascita è obbligatoria e non può essere nel futuro',
+            customValidation: (value: string) => {
+                if (!value) return false;
+                const today = new Date().toISOString().slice(0, 10);
+                return value <= today;
+            }
+        },
         luogoNascita: { required: true, message: 'Il luogo di nascita è obbligatorio' },
         provinciaNascita: { required: true, message: 'La provincia di nascita è obbligatoria' },
         indirizzo: { required: true, message: 'L’indirizzo di residenza è obbligatorio' },
         residenza: { required: true, message: 'La città di residenza è obbligatoria' },
         provinciaResidenza: { required: true, message: 'La provincia di residenza è obbligatoria' },
-        telefono: { required: true, message: 'Il telefono è obbligatorio' },
-        email: { required: true, message: 'L’email è obbligatoria' },
+        telefono: {
+            required: true,
+            message: 'Inserisci un numero di telefono valido (solo cifre)',
+            customValidation: (value: string) => {
+                if (!value) return false;
+                return VALIDATION_PATTERNS.PHONE.test(value.trim());
+            }
+        },
+        email: {
+            required: true,
+            message: 'Inserisci un indirizzo email valido',
+            customValidation: (value: string) => {
+                if (!value) return false;
+                return VALIDATION_PATTERNS.EMAIL.test(value.trim());
+            }
+        },
+        scadenzaTessera: {
+            message: 'La scadenza tessera non può essere nel passato',
+            customValidation: (value: string) => {
+                if (!value) return true;
+                const today = new Date().toISOString().slice(0, 10);
+                return value >= today;
+            }
+        },
+        scadenzaCertificato: {
+            message: 'La scadenza certificato non può essere nel passato',
+            customValidation: (value: string) => {
+                if (!value) return true;
+                const today = new Date().toISOString().slice(0, 10);
+                return value >= today;
+            }
+        },
     };
 
     const handleSave = useCallback(async () => {
         setShowErrors(true);
         if (!validate(form, anagraficaRules)) return;
         setLoading(true);
-        const now = new Date();
-        const nowStr = now.toISOString();
-        const creato = editingSocio && editingSocio.creato ? editingSocio.creato : `${userName} - ${nowStr}`;
-        const modificato = editingSocio ?`${userName} - ${nowStr}` : "";
         const formToSave = {
             ...form,
             dataNascita: formatDateForSave(form.dataNascita),
             dataIscrizione: formatDateForSave(form.dataIscrizione),
             scadenzaTessera: formatDateForSave(form.scadenzaTessera),
             scadenzaCertificato: formatDateForSave(form.scadenzaCertificato),
+            quotaIscrizione: Number(form.quotaIscrizione) || 0,
+            quotaSaggio: Number(form.quotaSaggio) || 0,
+            quotaMensile: Number(form.quotaMensile) || 0,
             corsi: Array.isArray(form.corsi)
                 ? form.corsi.join(';')
                 : (typeof form.corsi === 'string' ? form.corsi : ''),
-            creato,
-            modificato
         };
         let result;
-        if (editingSocio && editingSocio.id) {
-            result = await update(editingSocio.id, formToSave);
+        const isUpdate = !!(editingSocio && editingSocio.id);
+        if (isUpdate) {
+            result = await updateSocio(editingSocio.id, formToSave);
         } else {
-            result = await create(formToSave);
+            result = await createSocio(formToSave);
         }
         setLoading(false);
         if (!result.success && result.error?.code === '23505') {
@@ -264,12 +327,23 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
             }
         }
         if (result.success) {
+            const elemento = `${form.cognome || ''} ${form.nome || ''}`.trim();
+            const tipoOperazione = isUpdate ? 'Modifica' : 'Creazione';
+            logOperation({
+                utente: userName || 'Unknown',
+                tipoOperazione,
+                lista: 'Soci',
+                elemento,
+            }).catch((error) => {
+                // eslint-disable-next-line no-console
+                console.error('Errore durante la scrittura del log:', error);
+            });
             if (onSave) onSave(formToSave);
             onClose();
             setShowErrors(false);
             setOpenSuccess(true);
         }
-    }, [form, onSave, onClose, validate, editingSocio, create, update, setError, userName]);
+    }, [form, onSave, onClose, validate, editingSocio, createSocio, updateSocio, setError, userName]);
 
     return (
         <>
@@ -278,7 +352,7 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio }: a
                 <DialogContent>
                     <Stack spacing={3} sx={{ mt: 1 }}>
                         <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} />
-                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} categorie={categorie} corsi={corsi} />
+                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} categorie={categorie} corsi={corsi} errors={showErrors ? errors : {}} />
                         <GenitoreFields form={form} handleField={handleField} />
                         <NoteFields form={form} handleField={handleField} />
                     </Stack>

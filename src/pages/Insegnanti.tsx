@@ -35,9 +35,50 @@ import { formatPrice } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../constants';
 import SuccessDialog from '../components/SuccessDialog';
 import { exportPagamentiInsegnantiExcel } from '../utils/exportPagamentiInsegnantiExcel';
+import { logOperation } from '../utils/logs';
 
 const MESI = ['Settembre', 'Ottobre', 'Novembre', 'Dicembre', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio'];
 const SETTIMANE = [1, 2, 3, 4, 5];
+
+// Converte una data (ISO yyyy-mm-dd o già dd/mm/yyyy) nel formato dd/mm/yyyy
+const formatDateToItalian = (value: string | undefined | null): string => {
+  if (!value) return '';
+  const val = value.toString();
+
+  if (val.includes('/')) {
+    return val;
+  }
+
+  const parts = val.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    if (year.length === 4) {
+      return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+    }
+  }
+
+  return val;
+};
+
+// Converte una data dd/mm/yyyy (o già ISO) in formato ISO yyyy-mm-dd per l'input type="date"
+const parseDateToIso = (value: string | undefined | null): string => {
+  if (!value) return '';
+  const val = value.toString();
+
+  if (val.includes('-')) {
+    return val;
+  }
+
+  const parts = val.split('/');
+  if (parts.length === 3) {
+    const [day, month, year] = parts;
+    if (year.length === 4) {
+      return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+  }
+
+  return val;
+};
 
 const Insegnanti: React.FC = () => {
   const navigate = useNavigate();
@@ -80,7 +121,10 @@ const Insegnanti: React.FC = () => {
   const handleOpenDialog = useCallback((pagamento?: PagamentoInsegnante, settimana?: number, mese?: string, disciplina?: string) => {
     if (pagamento) {
       setEditingPagamento(pagamento);
-      setForm(pagamento);
+      setForm({
+        ...pagamento,
+        data: parseDateToIso(pagamento.data),
+      });
     } else {
       // Prendi l'importo dalla disciplina specifica se disponibile
       let importoDefault = 0;
@@ -139,14 +183,37 @@ const Insegnanti: React.FC = () => {
       return;
     }
     
+    const payload = {
+      ...form,
+      data: formatDateToItalian(form.data as string),
+    };
+
     let result;
     if (editingPagamento) {
-      result = await updatePagamento(editingPagamento.id, form);
+      result = await updatePagamento(editingPagamento.id, payload);
     } else {
-      result = await createPagamento(form);
+      result = await createPagamento(payload);
     }
     
     if (result.success) {
+      const isUpdate = !!editingPagamento;
+      const idInsegnante = (form.idInsegnante || editingPagamento?.idInsegnante || '').toString();
+      const disciplina = (form.disciplina || editingPagamento?.disciplina || '').toString();
+      const mese = (form.mese || editingPagamento?.mese || '').toString();
+      const data = formatDateToItalian((form.data || editingPagamento?.data || '').toString());
+      const compensoValue = form.compensoLezione ?? editingPagamento?.compensoLezione ?? 0;
+      const elemento = `idIns ${idInsegnante}: ${disciplina}-${mese}-${data}-${compensoValue}` + "€";
+
+      logOperation({
+        utente: profile?.userName || 'Unknown',
+        tipoOperazione: isUpdate ? 'Modifica' : 'Creazione',
+        lista: 'PagamentiInsegnanti',
+        elemento
+      }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Errore durante la scrittura del log pagamento insegnante:', error);
+      });
+
       handleCloseDialog();
       setOpenSuccess(true);
     }
@@ -156,7 +223,25 @@ const Insegnanti: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Sei sicuro di voler eliminare questo pagamento?')) {
       setDeleteLoading(true);
-      await removePagamento(id);
+      const pagamentoToDelete = pagamenti.find((p) => p.id === id);
+      const deleteResult = await removePagamento(id);
+
+      if (deleteResult.success && pagamentoToDelete) {
+        const compensoValue = pagamentoToDelete.compensoLezione ?? 0;
+        const data = formatDateToItalian(pagamentoToDelete.data);
+        const elemento = `idIns ${pagamentoToDelete.idInsegnante}: ${pagamentoToDelete.disciplina}-${pagamentoToDelete.mese}-${data}-${compensoValue}`;
+
+        logOperation({
+          utente: profile?.userName || 'Unknown',
+          tipoOperazione: 'Eliminazione',
+          lista: 'PagamentiInsegnanti',
+          elemento
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log pagamento insegnante:', error);
+        });
+      }
+
       setDeleteLoading(false);
     }
   };
@@ -371,7 +456,7 @@ const Insegnanti: React.FC = () => {
                                     }}>
                                       {pagamentiCella.map(p => (
                                         <Typography key={p.id} variant="caption" display="block">
-                                          {new Date(p.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                          {formatDateToItalian(p.data)}
                                         </Typography>
                                       ))}
                                     </TableCell>
