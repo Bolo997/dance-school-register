@@ -33,9 +33,50 @@ interface DataTableProps {
   onModulo?: (item: any) => void;
   emptyMessage?: string;
   renderCell?: (row: any, column: Column) => React.ReactNode;
+  getCellSx?: (row: any, column: Column) => any;
+  getHeadCellSx?: (column: Column) => any;
+  actionColumnWidth?: number;
 }
 
 type Order = 'asc' | 'desc';
+
+const toSortableNumberFromDateString = (value: string): number | null => {
+  const v = value.trim();
+  // dd/mm/yyyy or dd/mm/yyyy - hh:mm
+  const it = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s*-\s*(\d{2}):(\d{2}))?$/.exec(v);
+  if (it) {
+    const [, dd, mm, yyyy, hh, min] = it;
+    const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh || '0'), Number(min || '0'), 0, 0);
+    const time = date.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+
+  // ISO yyyy-mm-dd or yyyy-mm-ddThh:mm...
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/.exec(v);
+  if (iso) {
+    const [, yyyy, mm, dd, hh, min] = iso;
+    const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh || '0'), Number(min || '0'), 0, 0);
+    const time = date.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+
+  return null;
+};
+
+const normalizeForSort = (value: unknown): string | number => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'string') {
+    if (!value.trim()) return '';
+    const asDate = toSortableNumberFromDateString(value);
+    if (asDate !== null) return asDate;
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber) && value.trim() !== '') return asNumber;
+    return value.toLowerCase();
+  }
+  return String(value).toLowerCase();
+};
 
 const DataTable = React.memo<DataTableProps>(({
   title,
@@ -47,8 +88,12 @@ const DataTable = React.memo<DataTableProps>(({
   onCopy,
   onModulo,
   emptyMessage = 'Nessun dato presente',
-  renderCell
+  renderCell,
+  getCellSx,
+  getHeadCellSx,
+  actionColumnWidth
 }) => {
+  const actionW = actionColumnWidth ?? 100;
   const { profile } = require('../contexts/AuthContext').useAuth();
   const [orderBy, setOrderBy] = useState<string>('');
   const [order, setOrder] = useState<Order>('asc');
@@ -86,7 +131,9 @@ const DataTable = React.memo<DataTableProps>(({
         const bValue = b[orderBy];
         if (aValue == null) return 1;
         if (bValue == null) return -1;
-        const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        const av = normalizeForSort(aValue);
+        const bv = normalizeForSort(bValue);
+        const comparison = av < bv ? -1 : av > bv ? 1 : 0;
         return order === 'asc' ? comparison : -comparison;
       });
     }
@@ -149,13 +196,18 @@ const DataTable = React.memo<DataTableProps>(({
   const renderCells = (item: any) => (
     columns.map((col, i) => {
       const customContent = renderCell ? renderCell(item, col) : undefined;
+      const extraSx = getCellSx ? getCellSx(item, col) : undefined;
       return (
-        <TableCell key={`cell-${item.id}-${i}-${col.key}`} sx={{ 
+        <TableCell
+          key={`cell-${item.id}-${i}-${col.key}`}
+          align={col.align ?? 'left'}
+          sx={{ 
           py: 0.10, 
           width: col.width || 'auto', 
           minWidth: col.width || 'auto',
           maxWidth: col.width || 'auto',
-          wordBreak: 'break-word'
+          wordBreak: 'break-word',
+          ...(extraSx || {})
         }}>
           {customContent !== undefined 
             ? customContent 
@@ -187,16 +239,24 @@ const DataTable = React.memo<DataTableProps>(({
         </Box>
       </Box>
 
-      <TableContainer>
+      <TableContainer sx={{ maxHeight: 600, overflow: 'auto' }}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '100px' }}></TableCell>
+              <TableCell sx={{ width: `${actionW}px`, minWidth: `${actionW}px`, maxWidth: `${actionW}px`, position: 'sticky', left: 0, top: 0, zIndex: 3, bgcolor: 'background.paper' }}></TableCell>
               {columns.map((col, i) => (
-                <TableCell key={`head-${i}-${col.key}`} sx={{ 
+                <TableCell
+                  key={`head-${i}-${col.key}`}
+                  align={col.align ?? 'left'}
+                  sx={{ 
                   width: col.width || 'auto', 
                   minWidth: col.width || 'auto',
-                  maxWidth: col.width || 'auto'
+                  maxWidth: col.width || 'auto',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 2,
+                  bgcolor: 'background.paper',
+                  ...(getHeadCellSx ? getHeadCellSx(col) : {})
                 }}>
                   <TableSortLabel
                     active={orderBy === col.key}
@@ -210,9 +270,9 @@ const DataTable = React.memo<DataTableProps>(({
             </TableRow>
             {showFilters && (
               <TableRow>
-                <TableCell />
+                <TableCell sx={{ width: `${actionW}px`, minWidth: `${actionW}px`, maxWidth: `${actionW}px`, position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper' }} />
                 {columns.map((col, i) => (
-                  <TableCell key={`filter-${i}-${col.key}`} sx={{ py: 0.5 }}>
+                  <TableCell key={`filter-${i}-${col.key}`} align={col.align ?? 'left'} sx={{ py: 0.5 }}>
                     <TextField
                       size="small"
                       placeholder={`Filtra ${col.label.toLowerCase()}...`}
@@ -229,7 +289,7 @@ const DataTable = React.memo<DataTableProps>(({
           <TableBody>
             {filteredAndSortedData.map((item) => (
               <TableRow key={item.id} sx={{ height: '32px' }}>
-                <TableCell sx={{ py: 0.25, whiteSpace: 'nowrap', width: '100px', maxWidth: '100px' }}>
+                <TableCell sx={{ py: 0.25, whiteSpace: 'nowrap', width: `${actionW}px`, maxWidth: `${actionW}px`, minWidth: `${actionW}px`, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}>
                   {renderActions(item)}
                 </TableCell>
                 {renderCells(item)}

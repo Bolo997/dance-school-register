@@ -48,12 +48,14 @@ const formatDiscipline = (discipline: string[]) => {
 };
 
 const insegnantiColumns = [
+  { key: 'id', label: 'Id', width: '5%' },
   { key: 'cognome', label: 'Cognome', width: '25%' },
   { key: 'nome', label: 'Nome', width: '25%' },
   { key: 'discipline', label: 'Discipline', format: formatDiscipline, width: '50%' },
 ];
 
 const insegnantiExcelColumns = [
+  { key: 'id', label: 'Id' },
   { key: 'cognome', label: 'Cognome' },
   { key: 'nome', label: 'Nome' },
   {

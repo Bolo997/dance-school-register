@@ -48,14 +48,17 @@ const formatLezioni = (lezioni: string[]) => {
 };
 
 const corsiColumns = [
+  { key: 'id', label: 'Id', width: '5%' },
   { key: 'nomeCorso', label: 'Nome Corso', width: '20%' },
   { key: 'categoria', label: 'Categoria', width: '15%' },
-  { key: 'lezioni', label: 'Lezioni', format: formatLezioni, width: '35%' },
-  { key: 'prezzo', label: 'Prezzo', format: formatPrice, width: '10%' },
+  { key: 'lezioni', label: 'Lezioni', format: formatLezioni, width: '30%' },
+  { key: 'prezzoBase', label: 'Prezzo Base', format: formatPrice, width: '10%' },
+  { key: 'prezzoAggiuntivo', label: 'Prezzo Agg.', format: formatPrice, width: '10%' },
   { key: 'oreSettimanali', label: 'Ore Sett.', width: '10%' }
 ];
 
 const corsiExcelColumns = [
+  { key: 'id', label: 'Id' },
   { key: 'nomeCorso', label: 'Nome Corso' },
   { key: 'categoria', label: 'Categoria' },
   {
@@ -74,7 +77,8 @@ const corsiExcelColumns = [
         .join('\n');
     }
   },
-  { key: 'prezzo', label: 'Prezzo', format: formatPrice },
+  { key: 'prezzoBase', label: 'Prezzo Base', format: formatPrice },
+  { key: 'prezzoAggiuntivo', label: 'Prezzo Agg.', format: formatPrice },
   { key: 'oreSettimanali', label: 'Ore Sett.' }
 ];
 
@@ -111,7 +115,8 @@ const GestioneCorsi: React.FC = () => {
   const [openSuccess, setOpenSuccess] = useState(false);
   
   const [nomeCorso, setNomeCorso] = useState('');
-  const [prezzo, setPrezzo] = useState<string>('');
+  const [prezzoBase, setPrezzoBase] = useState<string>('');
+  const [prezzoAggiuntivo, setPrezzoAggiuntivo] = useState<string>('');
   const [categoria, setCategoria] = useState('');
   const [oreSettimanali, setOreSettimanali] = useState<string>('');
   
@@ -150,14 +155,16 @@ const GestioneCorsi: React.FC = () => {
         setEditingCorso(corso);
       }
       setNomeCorso(corso.nomeCorso);
-      setPrezzo(corso.prezzo != null ? String(corso.prezzo) : '');
+      setPrezzoBase(corso.prezzoBase != null ? String(corso.prezzoBase) : '');
+      setPrezzoAggiuntivo(corso.prezzoAggiuntivo != null ? String(corso.prezzoAggiuntivo) : '');
       setCategoria(corso.categoria);
       setOreSettimanali(corso.oreSettimanali != null ? String(corso.oreSettimanali) : '');
       parseLezioni(corso.lezioni || []);
     } else {
       setEditingCorso(null);
       setNomeCorso('');
-      setPrezzo('');
+      setPrezzoBase('');
+      setPrezzoAggiuntivo('');
       setCategoria('');
       setOreSettimanali('');
       setLezioni([]);
@@ -174,7 +181,8 @@ const GestioneCorsi: React.FC = () => {
     setOpenCorsoDialog(false);
     setEditingCorso(null);
     setNomeCorso('');
-    setPrezzo('');
+    setPrezzoBase('');
+    setPrezzoAggiuntivo('');
     setCategoria('');
     setOreSettimanali('');
     setLezioni([]);
@@ -253,7 +261,8 @@ const GestioneCorsi: React.FC = () => {
   const saveCorso = async () => {
     const corsoData = {
       nomeCorso,
-      prezzo: Number(prezzo) || 0,
+      prezzoBase: Number(prezzoBase) || 0,
+      prezzoAggiuntivo: Number(prezzoAggiuntivo) || 0,
       categoria,
       oreSettimanali: Number(oreSettimanali) || 0,
       lezioni: serializeLezioni(lezioni)
@@ -298,7 +307,8 @@ const GestioneCorsi: React.FC = () => {
     // Prima salva il corso
     const corsoData = {
       nomeCorso,
-      prezzo: Number(prezzo) || 0,
+      prezzoBase: Number(prezzoBase) || 0,
+      prezzoAggiuntivo: Number(prezzoAggiuntivo) || 0,
       categoria,
       oreSettimanali: Number(oreSettimanali) || 0,
       lezioni: serializeLezioni(lezioni)
@@ -353,7 +363,7 @@ const GestioneCorsi: React.FC = () => {
     }
     setLoading(false);
     setAffectedSoci([]);
-  }, [nomeCorso, prezzo, categoria, oreSettimanali, lezioni, editingCorso, updateCorso, affectedSoci, updateSocio, serializeLezioni, handleCloseCorsoDialog]);
+  }, [nomeCorso, prezzoBase, prezzoAggiuntivo, categoria, oreSettimanali, lezioni, editingCorso, updateCorso, affectedSoci, updateSocio, serializeLezioni, handleCloseCorsoDialog]);
 
   const handleDeleteCorso = useCallback((id: string) => {
     const corsoToRemove = corsi.find((c: Corso) => c.id === id);
@@ -535,11 +545,18 @@ const GestioneCorsi: React.FC = () => {
                 ))}
               </TextField>
               <TextField
-                label="Prezzo€"
+                label="Prezzo Base €"
                 type="number"
                 fullWidth
-                value={prezzo}
-                onChange={(e) => setPrezzo(e.target.value)}
+                value={prezzoBase}
+                onChange={(e) => setPrezzoBase(e.target.value)}
+              />
+              <TextField
+                label="Prezzo Agg. €"
+                type="number"
+                fullWidth
+                value={prezzoAggiuntivo}
+                onChange={(e) => setPrezzoAggiuntivo(e.target.value)}
               />
               <TextField
                 label="Ore Settimanali"

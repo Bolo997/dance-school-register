@@ -78,6 +78,7 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
                 <FormControlLabel control={<Checkbox checked={form.iscrizione === true} onChange={e => handleField('iscrizione', e.target.checked)} />} label="Iscrizione" labelPlacement="start" />
                 <FormControlLabel control={<Checkbox checked={form.modulo === true} onChange={e => handleField('modulo', e.target.checked)} />} label="Modulo" labelPlacement="start" />
                 <FormControlLabel control={<Checkbox checked={form.agonistico === true} onChange={e => handleField('agonistico', e.target.checked)} />} label="Agonistico" labelPlacement="start" />
+                <FormControlLabel control={<Checkbox checked={form.sospeso === true} onChange={e => handleField('sospeso', e.target.checked)} />} label="Sospeso" labelPlacement="start" />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
@@ -241,6 +242,7 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
         setForm((prev: Record<string, any>) => ({ ...prev, [field]: value }));
     }, []);
 
+
     // Regole di validazione per i campi anagrafici e principali
     const anagraficaRules = {
         nome: { required: true, message: 'Il nome è obbligatorio' },
@@ -274,22 +276,6 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
             customValidation: (value: string) => {
                 if (!value) return false;
                 return VALIDATION_PATTERNS.EMAIL.test(value.trim());
-            }
-        },
-        scadenzaTessera: {
-            message: 'La scadenza tessera non può essere nel passato',
-            customValidation: (value: string) => {
-                if (!value) return true;
-                const today = new Date().toISOString().slice(0, 10);
-                return value >= today;
-            }
-        },
-        scadenzaCertificato: {
-            message: 'La scadenza certificato non può essere nel passato',
-            customValidation: (value: string) => {
-                if (!value) return true;
-                const today = new Date().toISOString().slice(0, 10);
-                return value >= today;
             }
         },
     };

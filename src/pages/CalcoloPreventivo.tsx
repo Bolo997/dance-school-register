@@ -5,7 +5,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useSupabaseData } from '../hooks/useSupabaseData';
-import { TipoIscrizione, Corso, ImportoPreventivo } from '../types';
+import { TipoIscrizione, Corso, ImportoPreventivo, Socio } from '../types';
 import GestioneSociDialog from './GestioneSociDialog';
 
 const CalcoloPreventivo: React.FC = () => {
@@ -23,12 +23,15 @@ const CalcoloPreventivo: React.FC = () => {
 	const { data: tipiIscrizione = [] } = useSupabaseData<TipoIscrizione>('TipoIscrizione');
 	const { data: corsi = [] } = useSupabaseData<Corso>('Corsi');
 	const { data: categorie = [] } = useSupabaseData<any>('CategorieCorsi');
+	const { data: soci = [], create: createSocio, update: updateSocio } = useSupabaseData<Socio>('Soci');
 	const [selectedTipo, setSelectedTipo] = useState<string>('');
 	const [selectedCorsoBase, setSelectedCorsoBase] = useState<string>('');
 	const [selectedCorsoAggiuntivo, setSelectedCorsoAggiuntivo] = useState<string>('');
 	const [selectedCorsi, setSelectedCorsi] = useState<string[]>([]);
+    const [selectedSocioId, setSelectedSocioId] = useState<string>('');
 	const [openSocioDialog, setOpenSocioDialog] = useState(false);
 	const [formSocio, setFormSocio] = useState<any>({});
+    const [editingSocio, setEditingSocio] = useState<Socio | null>(null);
 
 	// Helpers
 	const tipoValue = useMemo(() => tipiIscrizione.find(t => t.id === selectedTipo)?.value || '', [selectedTipo, tipiIscrizione]);
@@ -44,7 +47,7 @@ const CalcoloPreventivo: React.FC = () => {
 
 	const corsoBase = useMemo(() => sortedCorsi.find(c => c.id === selectedCorsoBase), [selectedCorsoBase, sortedCorsi]);
 	// Calcolo importoBase
-	const importoBase = corsoBase ? corsoBase.prezzo : 0;
+	const importoBase = corsoBase ? corsoBase.prezzoBase : 0;
 	const corsiAggiunti = useMemo(() => selectedCorsi.map(id => sortedCorsi.find(c => c.id === id)).filter(Boolean) as Corso[], [selectedCorsi, sortedCorsi]);
 
 	// Helper per colore categoria
@@ -56,7 +59,7 @@ const CalcoloPreventivo: React.FC = () => {
 	// Subtotals
 	const subtotalCorsi = useMemo(() => {
 		let sum = 0;
-		sum += corsiAggiunti.reduce((acc, c) => acc + c.prezzo, 0);
+		sum += corsiAggiunti.reduce((acc, c) => acc + c.prezzoAggiuntivo, 0);
 		return sum;
 	}, [corsiAggiunti]);
 
@@ -81,21 +84,65 @@ const CalcoloPreventivo: React.FC = () => {
 		}
 		return 0;
 	});
-	const sommaValoriExtra = valoriExtraSelezionati.reduce((acc, v) => acc + v, 0);
-	const importoFinaleCorsi = subtotalIscrizione - sommaValoriExtra;
+	// Arrotondamento a multiplo di 5 euro
+	const arrotonda5 = (val: number) => Math.round(val / 5) * 5;
 
+	const sommaValoriExtra = valoriExtraSelezionati.reduce((acc, v) => acc + v, 0);
+	const importoFinaleCorsi = arrotonda5(subtotalIscrizione - sommaValoriExtra);
+
+	// Selezione socio -> popola tipo iscrizione, corso base e corsi aggiuntivi
+	const handleSelectSocio = (id: string) => {
+		setSelectedSocioId(id);
+		const socio = soci.find(s => s.id === id);
+		if (!socio) {
+			setSelectedTipo('');
+			setSelectedCorsoBase('');
+			setSelectedCorsi([]);
+			setCheckedQuotaSaggio(false);
+			return;
+		}
+
+		// Tipo iscrizione: abbina per valore in euro
+		const socioQuota = parseFloat(String(socio.quotaIscrizione || '0'));
+		const tipoMatch = tipiIscrizione.find(t => parseFloat(String(t.value || '0')) === socioQuota);
+		setSelectedTipo(tipoMatch ? tipoMatch.id : '');
+
+		// Corso base: mappa dal nome corso al suo id
+		const baseCourse = socio.base ? sortedCorsi.find(c => c.nomeCorso === socio.base) : undefined;
+		setSelectedCorsoBase(baseCourse ? baseCourse.id : '');
+
+		// Corsi aggiuntivi: stringa separata da ; -> mappa nomi a ids
+		const courseNames = (socio.corsi || '')
+			.split(';')
+			.map(s => s.trim())
+			.filter(Boolean);
+		const ids = courseNames
+			.map(name => {
+				const course = sortedCorsi.find(c => c.nomeCorso === name);
+				return course ? course.id : undefined;
+			})
+			.filter((v): v is string => !!v);
+		// Evita duplicati col corso base
+		const filteredIds = baseCourse ? ids.filter(cid => cid !== baseCourse.id) : ids;
+		setSelectedCorsi(filteredIds);
+
+		// Quota saggio: abilita se presente (>0)
+		const socioQuotaSaggio = parseFloat(String(socio.quotaSaggio || '0'));
+		setCheckedQuotaSaggio(!!(socioQuotaSaggio > 0));
+	};
+	
 	// Calcolo totali richiesti
 	const quotaSaggio = checkedQuotaSaggio && importiPreventivo[4] ? parseFloat(importiPreventivo[4].valore) : 0;
-	const iscrizioneTotale = parseFloat(tipoValue) || 0;
-	const quotaMensile = importoFinaleCorsi + quotaSaggio;
+	const iscrizioneTotale = arrotonda5(parseFloat(tipoValue) || 0);
+	const quotaMensile = arrotonda5(importoFinaleCorsi + quotaSaggio);
 	const percentualeScontoTrimestre = importiPreventivo[5] && importiPreventivo[5].valore
 		? 1 - (parseFloat(importiPreventivo[5].valore.replace('%', '')) / 100)
 		: 1;
-	const quotaTrimestraleScontata = ((quotaMensile - quotaSaggio) * 3 * percentualeScontoTrimestre) + (quotaSaggio * 3);
+	const quotaTrimestraleScontata = arrotonda5(((quotaMensile - quotaSaggio) * 3 * percentualeScontoTrimestre) + (quotaSaggio * 3));
 	const percentualeScontoAnnuale = importiPreventivo[6] && importiPreventivo[6].valore
 		? 1 - (parseFloat(importiPreventivo[6].valore.replace('%', '')) / 100)
 		: 1;
-	const quotaAnnualeScontata = ((quotaMensile - quotaSaggio) * 9 * percentualeScontoAnnuale) + (quotaSaggio * 9);
+	const quotaAnnualeScontata = arrotonda5(((quotaMensile - quotaSaggio) * 9 * percentualeScontoAnnuale) + (quotaSaggio * 9));
 
 	// Actions
 	const handleAddCorso = () => {
@@ -153,6 +200,56 @@ const CalcoloPreventivo: React.FC = () => {
 			cognomeGenitore: '',
 			codFiscaleGenitore: ''
 		});
+		setEditingSocio(null);
+		setOpenSocioDialog(true);
+	};
+
+	// Apri dialog modifica socio selezionato: anagrafica/genitore/note dal socio, iscrizione dal preventivo
+	const handleModificaSocio = () => {
+		if (!selectedSocioId) return;
+		const socio = soci.find(s => s.id === selectedSocioId);
+		if (!socio) return;
+		const corsiNomi = selectedCorsi.map(id => {
+			const corso = sortedCorsi.find(c => c.id === id);
+			return corso ? corso.nomeCorso : id;
+		});
+		const baseNome = sortedCorsi.find(c => c.id === selectedCorsoBase)?.nomeCorso || selectedCorsoBase;
+		const initialForm = {
+			// Iscrizione (from current preventivo)
+			iscrizione: true,
+			dataIscrizione: new Date().toISOString().slice(0, 10),
+			quotaIscrizione: tipoValue,
+			quotaMensile: quotaMensile.toFixed(2),
+			base: baseNome,
+			corsi: corsiNomi,
+			quotaSaggio: checkedQuotaSaggio && importiPreventivo[4] ? importiPreventivo[4].valore : '',
+			// Anagrafica (from socio)
+			cognome: socio.cognome || '',
+			nome: socio.nome || '',
+			codFiscale: socio.codFiscale || '',
+			dataNascita: socio.dataNascita || '',
+			luogoNascita: socio.luogoNascita || '',
+			provinciaNascita: socio.provinciaNascita || '',
+			indirizzo: socio.indirizzo || '',
+			residenza: socio.residenza || '',
+			provinciaResidenza: socio.provinciaResidenza || '',
+			telefono: socio.telefono || '',
+			email: socio.email || '',
+			scadenzaTessera: socio.scadenzaTessera || '',
+			scadenzaCertificato: socio.scadenzaCertificato || '',
+			// Genitore
+			nomeGenitore: socio.nomeGenitore || '',
+			cognomeGenitore: socio.cognomeGenitore || '',
+			codFiscaleGenitore: socio.codFiscaleGenitore || '',
+			// Note
+			note: socio.note || '',
+			// Flags
+			modulo: socio.modulo || false,
+			agonistico: socio.agonistico || false,
+			sospeso: socio.sospeso || false,
+		};
+		setFormSocio(initialForm);
+		setEditingSocio(socio);
 		setOpenSocioDialog(true);
 	};
 
@@ -166,8 +263,31 @@ const CalcoloPreventivo: React.FC = () => {
 						</Avatar>
 						<Typography variant="h4" fontWeight={600} color="#1976d2">Calcolo Preventivo</Typography>
 					</Box>
+
 					<Divider sx={{ mb: 3 }} />
 					<Stack spacing={3}>
+						<Box display="flex" alignItems="center" gap={2}>
+							<Typography sx={{ minWidth: 140, fontWeight: 500 }}>Seleziona Socio</Typography>
+							<TextField
+								select
+								value={selectedSocioId}
+								onChange={e => handleSelectSocio(e.target.value)}
+								size="small"
+								sx={{ minWidth: 360, bgcolor: 'white', borderRadius: 2 }}
+							>
+								<MenuItem value="">Nessuno</MenuItem>
+								{soci
+									.slice()
+									.sort((a, b) => {
+										const ccomp = (a.cognome || '').localeCompare(b.cognome || '');
+										if (ccomp !== 0) return ccomp;
+										return (a.nome || '').localeCompare(b.nome || '');
+									})
+									.map(s => (
+										<MenuItem key={s.id} value={s.id}>{`${s.cognome} ${s.nome}`}</MenuItem>
+									))}
+							</TextField>
+						</Box>
 						<Box display="flex" alignItems="center" gap={2}>
 							<Typography sx={{ minWidth: 140, fontWeight: 500 }}>Tipo Iscrizione</Typography>
 							<TextField
@@ -213,14 +333,14 @@ const CalcoloPreventivo: React.FC = () => {
 													}}
 												/>
 												<span style={{ fontWeight: 500 }}>{corso.nomeCorso}</span>
-												<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzo}€</span>
+												<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzoBase}€</span>
 											</Box>
 										</MenuItem>
 									);
 								})}
 							</TextField>
 							<Typography sx={{ minWidth: 120, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
-								{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corsoBase.prezzo} €</span> : ''}
+								{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corsoBase.prezzoBase} €</span> : ''}
 							</Typography>
 						</Box>
 						<Box display="flex" alignItems="center" gap={2}>
@@ -253,7 +373,7 @@ const CalcoloPreventivo: React.FC = () => {
 														}}
 													/>
 													<span style={{ fontWeight: 500 }}>{corso.nomeCorso}</span>
-													<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzo}€</span>
+													<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzoAggiuntivo}€</span>
 												</Box>
 											</MenuItem>
 										);
@@ -290,7 +410,7 @@ const CalcoloPreventivo: React.FC = () => {
 													<Typography sx={{ fontWeight: 500, textAlign: 'center' }}>{corso.nomeCorso}</Typography>
 												</Box>
 												<Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-													<Typography sx={{ fontWeight: 500, textAlign: 'right' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corso.prezzo} €</span></Typography>
+													<Typography sx={{ fontWeight: 500, textAlign: 'right' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corso.prezzoAggiuntivo} €</span></Typography>
 												</Box>
 												<IconButton size="small" onClick={() => handleRemoveCorso(corso.id)}>
 													<DeleteIcon fontSize="small" />
@@ -446,7 +566,7 @@ const CalcoloPreventivo: React.FC = () => {
 											   )}
 										   </Box>
 										   {/* Bottoni aggiungi/pulisci */}
-										   <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+										   <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop:'12px' }}>
 											   <Button 
 												   variant="contained" 
 												   size="small" 
@@ -456,7 +576,10 @@ const CalcoloPreventivo: React.FC = () => {
 												   Pulisci
 											   </Button>
 											   {profile?.role !== 'reader' && (
-												   <Button variant="contained" color="primary" size="small" onClick={handleAggiungiSocio}>Aggiungi socio</Button>
+												   <>
+													   <Button variant="contained" color="primary" size="small" onClick={handleAggiungiSocio} sx={{ mr: 1 }}>Aggiungi socio</Button>
+													   <Button variant="contained" color="primary" size="small" onClick={handleModificaSocio} disabled={!selectedSocioId}>Modifica socio</Button>
+												   </>
 											   )}
 										   </Box>
 									   </Box>
@@ -468,6 +591,9 @@ const CalcoloPreventivo: React.FC = () => {
 											   open={openSocioDialog}
 											   onClose={() => setOpenSocioDialog(false)}
 											   initialForm={formSocio}
+											   editingSocio={editingSocio}
+											   createSocio={createSocio}
+											   updateSocio={updateSocio}
 										   />
 									   )}
 							</>

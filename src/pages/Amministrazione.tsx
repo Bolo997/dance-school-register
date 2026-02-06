@@ -15,17 +15,19 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import WarningDialog from '../components/WarningDialog';
-import { UserProfile, InfoSito, TipoIscrizione, ImportoPreventivo, Log } from '../types';
+import { UserProfile, InfoSito, TipoIscrizione, ImportoPreventivo, Log, Socio } from '../types';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { ERROR_MESSAGES } from '../constants';
 import { MenuItem } from '@mui/material';
+import { logOperation } from '../utils/logs';
 
 const Amministrazione: React.FC = () => {
     const { removeAll: removeAllFatture } = useSupabaseData('Fatture');
     const { removeAll: removeAllPagamenti } = useSupabaseData('PagamentiInsegnanti');
     const [openConfirmFatture, setOpenConfirmFatture] = useState(false);
     const [openConfirmPagamenti, setOpenConfirmPagamenti] = useState(false);
+    const [openConfirmResetSoci, setOpenConfirmResetSoci] = useState(false);
     const [openConfirmLogs, setOpenConfirmLogs] = useState(false);
     const handleSvuotaFatture = useCallback(() => {
       setOpenConfirmFatture(true);
@@ -35,6 +37,9 @@ const Amministrazione: React.FC = () => {
     }, []);
     const handleSvuotaLogs = useCallback(() => {
       setOpenConfirmLogs(true);
+    }, []);
+    const handleResetSoci = useCallback(() => {
+       setOpenConfirmResetSoci(true);
     }, []);
     const handleConfirmSvuotaFatture = useCallback(async () => {
       setLoading(true);
@@ -48,22 +53,72 @@ const Amministrazione: React.FC = () => {
       setOpenConfirmPagamenti(false);
       setLoading(false);
     }, [removeAllPagamenti]);
+    const handleConfirmResetSoci = async () => {
+      setLoading(true);
+      try {
+        if (updateSocio && soci.length > 0) {
+          await Promise.all(
+            soci.map((s) =>
+              updateSocio(s.id, {
+                ...s,
+                iscrizione: false,
+                modulo: false,
+                agonistico: false,
+                sospeso: true,
+                scadenzaTessera: '',
+                dataIscrizione: '',
+                scadenzaCertificato: '',
+                quotaSaggio: 0 as any,
+                quotaMensile: 0 as any,
+                quotaIscrizione: 0 as any,
+                corsi: '',
+                base: '',
+              })
+            )
+          );
+        }
+      } finally {
+        setOpenConfirmResetSoci(false);
+        setLoading(false);
+      }
+    };
     const handleCancelSvuotaFatture = useCallback(() => {
       setOpenConfirmFatture(false);
     }, []);
     const handleCancelSvuotaPagamenti = useCallback(() => {
       setOpenConfirmPagamenti(false);
     }, []);
+    const handleCancelResetSoci = useCallback(() => {
+      setOpenConfirmResetSoci(false);
+    }, []);
     const handleCancelSvuotaLogs = useCallback(() => {
       setOpenConfirmLogs(false);
     }, []);
   const { profile } = useAuth();
+  const userName = profile?.userName || 'Unknown';
   const { data: users, create: createUser, update: updateUser, remove: removeUser } = useSupabaseData<UserProfile>('Users', { userName: profile?.userName || 'Unknown' });
   const { data: infoSito, create: createInfoSito, update: updateInfoSito, remove: removeInfoSito } = useSupabaseData<InfoSito>('InfoSito', { userName: profile?.userName || 'Unknown' });
   const { data: tipiIscrizione, create: createTipoIscrizione, update: updateTipoIscrizione, remove: removeTipoIscrizione } = useSupabaseData<TipoIscrizione>('TipoIscrizione', { userName: profile?.userName || 'Unknown' });
   const { data: importiPreventivo, create: createImportoPreventivo, update: updateImportoPreventivo, remove: removeImportoPreventivo } = useSupabaseData<ImportoPreventivo>('ImportiPreventivo', { userName: profile?.userName || 'Unknown' });
+  const { data: soci = [], update: updateSocio } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
   const { data: logs, removeAll: removeAllLogs } = useSupabaseData<Log>('Logs', { userName: profile?.userName || 'Unknown' });
   const { errors, validate, clearAllErrors } = useFormValidation();
+
+  const joinValues = (values: Array<unknown>) => values.map((v) => (v === null || v === undefined ? '' : String(v))).join('-');
+
+  const formatElementoUsers = (u: Partial<UserProfile>) =>
+    joinValues([
+      u.id,
+      u.userName,
+      // Evita di loggare password in chiaro
+      u.password ? '***' : '',
+      u.role,
+      u.full_name,
+    ]);
+
+  const formatElementoInfoSito = (i: Partial<InfoSito>) => joinValues([i.id, i.campo, i.valore]);
+  const formatElementoTipoIscrizione = (t: Partial<TipoIscrizione>) => joinValues([t.id, t.tipo, t.value]);
+  const formatElementoImportoPreventivo = (p: Partial<ImportoPreventivo>) => joinValues([p.id, p.descrizione, p.valore]);
 
   const [tabValue, setTabValue] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
@@ -125,12 +180,37 @@ const Amministrazione: React.FC = () => {
         password: { required: !editingItem, message: ERROR_MESSAGES.REQUIRED_FIELD('password') },
         role: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('role') },
       });
-      if (!isValid) return;
+      if (!isValid) {
+        setLoading(false);
+        return;
+      }
       
       if (editingItem) {
         result = await updateUser(editingItem.id, form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Modifica',
+            lista: 'Utenti',
+            elemento: formatElementoUsers({ ...(editingItem || {}), ...(form || {}) }),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       } else {
         result = await createUser(form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Creazione',
+            lista: 'Utenti',
+            elemento: formatElementoUsers(form || {}),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       }
     } else if (currentSection === 'infoSito') {
       isValid = validate(form, {
@@ -144,8 +224,30 @@ const Amministrazione: React.FC = () => {
       
       if (editingItem) {
         result = await updateInfoSito(editingItem.id, form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Modifica',
+            lista: 'InfoSito',
+            elemento: formatElementoInfoSito({ ...(editingItem || {}), ...(form || {}) }),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       } else {
         result = await createInfoSito(form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Creazione',
+            lista: 'InfoSito',
+            elemento: formatElementoInfoSito(form || {}),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       }
     } else if (currentSection === 'tipoIscrizione') {
       isValid = validate(form, {
@@ -159,8 +261,30 @@ const Amministrazione: React.FC = () => {
 
       if (editingItem) {
         result = await updateTipoIscrizione(editingItem.id, form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Modifica',
+            lista: 'TipoIscrizione',
+            elemento: formatElementoTipoIscrizione({ ...(editingItem || {}), ...(form || {}) }),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       } else {
         result = await createTipoIscrizione(form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Creazione',
+            lista: 'TipoIscrizione',
+            elemento: formatElementoTipoIscrizione(form || {}),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       }
     } else if (currentSection === 'importiPreventivo') {
       isValid = validate(form, {
@@ -174,8 +298,30 @@ const Amministrazione: React.FC = () => {
 
       if (editingItem) {
         result = await updateImportoPreventivo(editingItem.id, form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Modifica',
+            lista: 'ImportoPreventivo',
+            elemento: formatElementoImportoPreventivo({ ...(editingItem || {}), ...(form || {}) }),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       } else {
         result = await createImportoPreventivo(form);
+        if (result?.success) {
+          logOperation({
+            utente: userName,
+            tipoOperazione: 'Creazione',
+            lista: 'ImportoPreventivo',
+            elemento: formatElementoImportoPreventivo(form || {}),
+          }).catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('Errore durante la scrittura del log:', error);
+          });
+        }
       }
     }
 
@@ -195,19 +341,67 @@ const Amministrazione: React.FC = () => {
 
     setLoading(true);
     if (currentSection === 'users') {
-      await removeUser(itemToDelete);
+      const toDelete = users?.find((u) => u.id === itemToDelete) || { id: itemToDelete };
+      const res = await removeUser(itemToDelete);
+      if (res?.success) {
+        logOperation({
+          utente: userName,
+          tipoOperazione: 'Eliminazione',
+          lista: 'Utenti',
+          elemento: formatElementoUsers(toDelete),
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
     } else if (currentSection === 'infoSito') {
-      await removeInfoSito(itemToDelete);
+      const toDelete = infoSito?.find((i) => i.id === itemToDelete) || { id: itemToDelete };
+      const res = await removeInfoSito(itemToDelete);
+      if (res?.success) {
+        logOperation({
+          utente: userName,
+          tipoOperazione: 'Eliminazione',
+          lista: 'InfoSito',
+          elemento: formatElementoInfoSito(toDelete),
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
     } else if (currentSection === 'tipoIscrizione') {
-      await removeTipoIscrizione(itemToDelete);
+      const toDelete = tipiIscrizione?.find((t) => t.id === itemToDelete) || { id: itemToDelete };
+      const res = await removeTipoIscrizione(itemToDelete);
+      if (res?.success) {
+        logOperation({
+          utente: userName,
+          tipoOperazione: 'Eliminazione',
+          lista: 'TipoIscrizione',
+          elemento: formatElementoTipoIscrizione(toDelete),
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
     } else if (currentSection === 'importiPreventivo') {
-      await removeImportoPreventivo(itemToDelete);
+      const toDelete = importiPreventivo?.find((p) => p.id === itemToDelete) || { id: itemToDelete };
+      const res = await removeImportoPreventivo(itemToDelete);
+      if (res?.success) {
+        logOperation({
+          utente: userName,
+          tipoOperazione: 'Eliminazione',
+          lista: 'ImportoPreventivo',
+          elemento: formatElementoImportoPreventivo(toDelete),
+        }).catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('Errore durante la scrittura del log:', error);
+        });
+      }
     }
 
     setOpenConfirmDelete(false);
     setItemToDelete(null);
     setLoading(false);
-  }, [itemToDelete, currentSection, removeUser, removeInfoSito, removeTipoIscrizione, removeImportoPreventivo]);
+  }, [itemToDelete, currentSection, removeUser, removeInfoSito, removeTipoIscrizione, removeImportoPreventivo, users, infoSito, tipiIscrizione, importiPreventivo, userName]);
 
   const handleCancelDelete = useCallback(() => {
     setOpenConfirmDelete(false);
@@ -263,10 +457,13 @@ const Amministrazione: React.FC = () => {
 
       <Box sx={{ display: 'flex', gap: 2, mb: 3, justifyContent: 'flex-end' }}>
         <Button variant="contained" color="error" onClick={handleSvuotaFatture} sx={{ fontWeight: 600 }}>
-          Svuota Fatture Soci
+          Svuota Fatture
         </Button>
         <Button variant="contained" color="error" onClick={handleSvuotaPagamenti} sx={{ fontWeight: 600 }}>
           Svuota Pagamenti Insegnanti
+        </Button>
+        <Button variant="contained" color="error" onClick={handleResetSoci} sx={{ fontWeight: 600 }}>
+          Reset Soci
         </Button>
       </Box>
 
@@ -495,6 +692,15 @@ const Amministrazione: React.FC = () => {
         message="Sei sicuro di voler svuotare tutti i logs? L'operazione è irreversibile."
         onConfirm={handleConfirmSvuotaLogs}
         onCancel={handleCancelSvuotaLogs}
+        confirmText="Svuota"
+        confirmColor="error"
+      />
+      <WarningDialog
+        open={openConfirmResetSoci}
+        title="Conferma reset"
+        message="Sei sicuro di voler resettare tutti i dati relativi alle iscrizioni di tutti i soci?"
+        onConfirm={handleConfirmResetSoci}
+        onCancel={handleCancelResetSoci}
         confirmText="Svuota"
         confirmColor="error"
       />

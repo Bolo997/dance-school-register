@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import SocioFormDialog from './GestioneSociDialog';
 import { useNavigate } from 'react-router-dom';
 import Container from '@mui/material/Container';
@@ -16,24 +16,50 @@ import DataTable from '../components/DataTable';
 import WarningDialog from '../components/WarningDialog';
 import ErrorDialog from '../components/ErrorDialog';
 import { Socio } from '../types';
+import { formatEuro } from '../utils/formatters';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { exportSociExcel } from '../utils/exportSociExcel';
 import { logOperation } from '../utils/logs';
 
+const parseItalianDateToMidnight = (value?: string): Date | null => {
+  if (!value) return null;
+  const raw = value.trim();
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isExpiredItalianDate = (value?: string): boolean => {
+  const date = parseItalianDateToMidnight(value);
+  if (!date) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date < today;
+};
+
 const fixedColumns = [
-  { key: 'scadenzaTessera', label: 'Scadenza Tessera', width: '110px' },
-  { key: 'iscrizione', label: 'Iscrizione', width: '90px' },
-  { key: 'modulo', label: 'Modulo', width: '90px' },
-  { key: 'agonistico', label: 'Agonistico', width: '110px' },
-  { key: 'dataIscrizione', label: 'Data Iscrizione', width: '110px' },
-  { key: 'quotaIscrizione', label: 'Quota Iscrizione', width: '110px', format: (v: string) => v ? `${v} €` : '' },
-  { key: 'quotaMensile', label: 'Quota Mensile', width: '110px', format: (v: string) => v ? `${v} €` : '' },
-  { key: 'quotaSaggio', label: 'Quota Saggio', width: '110px', format: (v: string) => v ? `${v} €` : '' },
+  { key: 'id', label: 'Id', width: '60px' },
   { key: 'cognome', label: 'Cognome', width: '160px' },
   { key: 'nome', label: 'Nome', width: '140px' },
+  { key: 'iscrizione', label: 'Iscrizione', width: '90px' },
+  { key: 'modulo', label: 'Modulo', width: '90px' },
+  { key: 'agonistico', label: 'Agonistico', width: '90px' },
+  { key: 'sospeso', label: 'Sospeso', width: '90px' },
+  { key: 'scadenzaTessera', label: 'Scadenza Tessera', width: '110px' },
+  { key: 'scadenzaCertificato', label: 'Scadenza Certificato', width: '160px' },
+  { key: 'dataIscrizione', label: 'Data Iscrizione', width: '110px' },
+  { key: 'quotaIscrizione', label: 'Quota Iscrizione', width: '110px', align: 'center', format: formatEuro },
+  { key: 'quotaMensile', label: 'Quota Mensile', width: '110px', align: 'center', format: formatEuro },
+  { key: 'quotaSaggio', label: 'Quota Saggio', width: '110px', align: 'center', format: formatEuro },
 ];
 const scrollableColumns = [
+  { key: 'base', label: 'Base', width: '250px' },
+  { key: 'corsi', label: 'Corsi', width: '250px' },
   { key: 'codFiscale', label: 'Cod. Fiscale', width: '250px' },
   { key: 'dataNascita', label: 'Data Nascita', width: '130px' },
   { key: 'luogoNascita', label: 'Luogo Nascita', width: '160px' },
@@ -43,10 +69,7 @@ const scrollableColumns = [
   { key: 'provinciaResidenza', label: 'Provincia Residenza', width: '90px' },
   { key: 'telefono', label: 'Telefono', width: '140px' },
   { key: 'email', label: 'Email', width: '250px' },
-  { key: 'scadenzaCertificato', label: 'Scadenza Certificato', width: '160px' },
   { key: 'note', label: 'Note', width: '250px' },
-  { key: 'base', label: 'Base', width: '250px' },
-  { key: 'corsi', label: 'Corsi', width: '250px' },
   { key: 'cognomeGenitore', label: 'Cognome Genitore', width: '250px' },
   { key: 'nomeGenitore', label: 'Nome Genitore', width: '250px' },
   { key: 'codFiscaleGenitore', label: 'Cod. Fiscale Genitore', width: '250px' }
@@ -61,7 +84,6 @@ const GestioneSoci: React.FC = () => {
     data: soci,
     loading: loadingSoci,
     remove,
-    reload,
     create: createSocio,
     update: updateSocio,
   } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
@@ -139,6 +161,37 @@ const GestioneSoci: React.FC = () => {
     navigate(`/modulo-iscrizione/${socio.id}`);
   }, [navigate]);
 
+  // Sticky offsets per colonne a sinistra (considera colonna azioni 100px)
+  const stickyOffsets = useMemo(() => {
+    const parseW = (w?: string) => (w ? parseInt(w, 10) : 0);
+    let acc = 100; // larghezza colonna azioni di default
+    const offsets: Record<string, number> = {};
+    const pinnedKeys = new Set(['id', 'cognome', 'nome']);
+    for (const col of allColumns) {
+      if (pinnedKeys.has(col.key)) {
+        offsets[col.key] = acc;
+      }
+      acc += parseW(col.width);
+    }
+    return offsets;
+  }, []);
+
+  const getCellSx = useCallback((row: any, col: { key: string }) => {
+    if (col.key === 'id' || col.key === 'cognome' || col.key === 'nome') {
+      const left = stickyOffsets[col.key] ?? 0;
+      return { position: 'sticky', left, zIndex: 1, bgcolor: 'background.paper' };
+    }
+    return undefined;
+  }, [stickyOffsets]);
+
+  const getHeadCellSx = useCallback((col: { key: string }) => {
+    if (col.key === 'id' || col.key === 'cognome' || col.key === 'nome') {
+      const left = stickyOffsets[col.key] ?? 0;
+      return { position: 'sticky', left, top: 0, zIndex: 3, bgcolor: 'background.paper' };
+    }
+    return undefined;
+  }, [stickyOffsets]);
+
   return (
     <Container maxWidth="xl">
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 4, mb: 3 }}>
@@ -179,8 +232,10 @@ const GestioneSoci: React.FC = () => {
         onDelete={handleDelete}
         onModulo={handleModulo}
         emptyMessage="Nessun socio presente"
+        getCellSx={getCellSx}
+        getHeadCellSx={getHeadCellSx}
         renderCell={(row, col) => {
-          if (col.key === 'iscrizione' || col.key === 'modulo' || col.key === 'agonistico') {
+          if (col.key === 'iscrizione' || col.key === 'modulo' || col.key === 'agonistico' || col.key === 'sospeso') {
             return (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 {row[col.key] ? (
@@ -188,6 +243,27 @@ const GestioneSoci: React.FC = () => {
                 ) : (
                   <CancelIcon sx={{ color: 'darkred' }} />
                 )}
+              </Box>
+            );
+          }
+          if (col.key === 'scadenzaTessera' || col.key === 'scadenzaCertificato') {
+            const value = row[col.key] as string;
+            const expired = isExpiredItalianDate(value);
+            return (
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  bgcolor: expired ? '#ffebee' : 'transparent',
+                  color: expired ? '#b71c1c' : 'inherit',
+                  fontWeight: expired ? 700 : 'inherit',
+                  display: 'inline-block',
+                  minWidth: 90,
+                  textAlign: 'center',
+                }}
+              >
+                {value || ''}
               </Box>
             );
           }
@@ -203,7 +279,8 @@ const GestioneSoci: React.FC = () => {
               </Box>
             );
           }
-          return row[col.key];
+          // Per le altre colonne lascia che DataTable usi col.format / valore di default
+          return undefined;
         }}
       />
       )}

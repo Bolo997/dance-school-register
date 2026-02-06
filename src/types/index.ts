@@ -63,7 +63,8 @@ export interface Sala {
 export interface Corso {
   id: string;
   nomeCorso: string;
-  prezzo: number;
+  prezzoBase: number;
+  prezzoAggiuntivo: number;
   lezioni: string[];
   categoria: string;
   oreSettimanali: number;
@@ -95,6 +96,7 @@ export interface Socio {
   iscrizione: boolean;
   modulo: boolean;
   agonistico: boolean;
+  sospeso: boolean;
   dataIscrizione: string;
   quotaIscrizione: string;
   scadenzaTessera: string;
@@ -141,7 +143,7 @@ export interface PagamentoInsegnante {
   mese: string;
   data: string;
   compensoLezione: number;
-  tariffa: string;
+  note: string;
   creato: string;
   modificato?: string;
 }
@@ -151,6 +153,7 @@ export interface Column {
   label: string;
   format?: (value: any) => string | React.ReactNode;
   width?: string;
+  align?: 'left' | 'center' | 'right';
 }
 
 export interface ValidationError {

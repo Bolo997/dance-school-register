@@ -93,6 +93,22 @@ const Insegnanti: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
+  const [dialogTeacher, setDialogTeacher] = useState<Insegnante | null>(null);
+
+  const getPrezzoFromDisciplina = useCallback((teacher: Insegnante | null, disciplina: string): number => {
+    if (!teacher || !disciplina) return 0;
+    const found = (teacher.discipline || []).find((d) => {
+      const parts = d.split(';');
+      const nome = (parts[0] || '').trim();
+      return nome === disciplina;
+    });
+    if (!found) return 0;
+    const parts = found.split(';');
+    const prezzoRaw = (parts[2] || '').trim();
+    const prezzo = parseFloat(prezzoRaw);
+    return Number.isFinite(prezzo) ? prezzo : 0;
+  }, []);
 
   // Rimuovi duplicati basandoti sul cognome e ordina alfabeticamente
   const insegnantiUnici = useMemo(() => {
@@ -119,6 +135,7 @@ const Insegnanti: React.FC = () => {
   };
 
   const handleOpenDialog = useCallback((pagamento?: PagamentoInsegnante, settimana?: number, mese?: string, disciplina?: string) => {
+    setDialogTeacher(insegnanteSelezionato || null);
     if (pagamento) {
       setEditingPagamento(pagamento);
       setForm({
@@ -128,8 +145,9 @@ const Insegnanti: React.FC = () => {
     } else {
       // Prendi l'importo dalla disciplina specifica se disponibile
       let importoDefault = 0;
-      if (disciplina && insegnanteSelezionato?.discipline && insegnanteSelezionato.discipline.length > 0) {
-        const disciplinaTrovata = insegnanteSelezionato.discipline.find(disc => {
+      const currentTeacher = dialogTeacher || insegnanteSelezionato;
+      if (disciplina && currentTeacher?.discipline && currentTeacher.discipline.length > 0) {
+        const disciplinaTrovata = currentTeacher.discipline.find(disc => {
           const parts = disc.split(';');
           const materia = parts[0]?.trim() || '';
           return materia === disciplina;
@@ -143,18 +161,37 @@ const Insegnanti: React.FC = () => {
       
       setEditingPagamento(null);
       setForm({
-        idInsegnante: insegnanteSelezionato?.id,
+        idInsegnante: currentTeacher?.id,
         disciplina: disciplina || '',
         settimana: settimana,
         mese: mese,
         data: new Date().toISOString().split('T')[0],
         compensoLezione: importoDefault,
-        tariffa: ''
+        note: ''
       });
     }
     clearAllErrors();
     setOpenDialog(true);
-  }, [insegnanteSelezionato, clearAllErrors]);
+  }, [insegnanteSelezionato, clearAllErrors, dialogTeacher]);
+
+  const handleAddPagamentoForSelectedTeacher = useCallback(() => {
+    if (!selectedTeacherId) return;
+    const teacher = insegnanti.find(t => t.id === selectedTeacherId);
+    if (!teacher) return;
+    setDialogTeacher(teacher);
+    setEditingPagamento(null);
+    setForm({
+      idInsegnante: teacher.id,
+      disciplina: '',
+      settimana: undefined,
+      mese: '',
+      data: new Date().toISOString().split('T')[0],
+      compensoLezione: 0,
+      note: ''
+    });
+    clearAllErrors();
+    setOpenDialog(true);
+  }, [selectedTeacherId, insegnanti, clearAllErrors]);
 
   const handleCloseDialog = useCallback(() => {
     setOpenDialog(false);
@@ -176,7 +213,6 @@ const Insegnanti: React.FC = () => {
       mese: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('mese') },
       data: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('data') },
       compensoLezione: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('compenso') },
-      tariffa: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('tariffa') },
     });
     if (!isValid) {
       setLoading(false);
@@ -267,7 +303,7 @@ const Insegnanti: React.FC = () => {
     { key: 'mese', label: 'Mese' },
     { key: 'data', label: 'Data' },
     { key: 'compensoLezione', label: 'Compenso', format: (val: number) => formatPrice(val || 0) },
-    { key: 'tariffa', label: 'Tariffa' },
+    { key: 'note', label: 'Note' },
   ];
 
   return (
@@ -295,12 +331,45 @@ const Insegnanti: React.FC = () => {
                 mese: p.mese,
                 data: new Date(p.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
                 compensoLezione: p.compensoLezione,
-                tariffa: p.tariffa,
+                note: p.note,
               }));
               exportPagamentiInsegnantiExcel(rows, pagamentiExcelColumns);
             }}
           >
             Export Excel
+          </Button>
+        )}
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <TextField
+          select
+          label="Seleziona Insegnante"
+          value={selectedTeacherId}
+          onChange={(e) => setSelectedTeacherId(e.target.value)}
+          size="small"
+          sx={{ minWidth: 270 }}
+        >
+          <MenuItem value="">Nessuno</MenuItem>
+          {insegnanti
+            .slice()
+            .sort((a, b) => {
+              const c = (a.cognome || '').localeCompare(b.cognome || '');
+              if (c !== 0) return c;
+              return (a.nome || '').localeCompare(b.nome || '');
+            })
+            .map((ins) => (
+              <MenuItem key={ins.id} value={ins.id}>{`${ins.cognome} ${ins.nome}`}</MenuItem>
+            ))}
+        </TextField>
+        {profile?.role === 'admin' && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            disabled={!selectedTeacherId}
+            onClick={handleAddPagamentoForSelectedTeacher}
+          >
+            Aggiungi Pagamento
           </Button>
         )}
       </Box>
@@ -351,12 +420,12 @@ const Insegnanti: React.FC = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold', bgcolor: '#f5f5f5' }}>SETTIMANA</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', bgcolor: '#f5f5f5' }}>DISCIPLINA</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', bgcolor: '#f5f5f5', minWidth: 180 }}>DISCIPLINA</TableCell>
                       {MESI.map((mese, idx) => (
                         <TableCell 
                           key={mese} 
                           align="center" 
-                          colSpan={3}
+                          colSpan={2}
                           sx={{ 
                             fontWeight: 'bold', 
                             bgcolor: idx % 2 === 0 ? '#e8f5e9' : '#fff9c4',
@@ -379,7 +448,6 @@ const Insegnanti: React.FC = () => {
                         <React.Fragment key={mese}>
                           <TableCell align="center" sx={{ fontSize: '0.75rem', bgcolor: idx % 2 === 0 ? '#e8f5e9' : '#fff9c4', borderLeft: '2px solid #ddd', minWidth: 120 }}>COMP. LEZ.</TableCell>
                           <TableCell align="center" sx={{ fontSize: '0.75rem', bgcolor: idx % 2 === 0 ? '#e8f5e9' : '#fff9c4', minWidth: 100 }}>DATA</TableCell>
-                          <TableCell align="center" sx={{ fontSize: '0.75rem', bgcolor: idx % 2 === 0 ? '#e8f5e9' : '#fff9c4', minWidth: 80 }}>TARIFFA</TableCell>
                         </React.Fragment>
                       ))}
                     </TableRow>
@@ -398,7 +466,7 @@ const Insegnanti: React.FC = () => {
                                   {settimana}° SETTIMANA
                                 </TableCell>
                               )}
-                              <TableCell sx={{ bgcolor: 'inherit' }}>{materia}</TableCell>
+                              <TableCell sx={{ bgcolor: 'inherit', minWidth: 180 }}>{materia}</TableCell>
                               {MESI.map((mese, idx) => {
                                 const pagamentiCella = getPagamentoPerCella(settimana, mese, materia);
                                 return (
@@ -460,16 +528,6 @@ const Insegnanti: React.FC = () => {
                                         </Typography>
                                       ))}
                                     </TableCell>
-                                    <TableCell align="center" sx={{ 
-                                      bgcolor: settimana % 2 === 0 
-                                        ? (idx % 2 === 0 ? '#e8f5e9' : '#fffacd') 
-                                        : (idx % 2 === 0 ? '#f1f8f4' : '#fffde7'),
-                                      minWidth: 80 
-                                    }}>
-                                      {pagamentiCella.map(p => (
-                                        <Typography key={p.id} variant="body2" display="block">{p.tariffa}</Typography>
-                                      ))}
-                                    </TableCell>
                                   </React.Fragment>
                                 );
                               })}
@@ -499,13 +557,20 @@ const Insegnanti: React.FC = () => {
               select
               label="Disciplina"
               value={form.disciplina || ''}
-              onChange={(e) => handleChange('disciplina', e.target.value)}
+              onChange={(e) => {
+                const disciplina = e.target.value;
+                handleChange('disciplina', disciplina);
+                if (!editingPagamento) {
+                  const prezzo = getPrezzoFromDisciplina(dialogTeacher, disciplina);
+                  handleChange('compensoLezione', prezzo);
+                }
+              }}
               fullWidth
               error={!!errors.disciplina}
               helperText={errors.disciplina}
               disabled={!!editingPagamento}
             >
-              {insegnanteSelezionato?.discipline && insegnanteSelezionato.discipline.map((disc, idx) => {
+              {dialogTeacher?.discipline && dialogTeacher.discipline.map((disc, idx) => {
                 const parts = disc.split(';');
                 const materia = parts[0]?.trim() || '';
                 return (
@@ -559,12 +624,13 @@ const Insegnanti: React.FC = () => {
               helperText={errors.compensoLezione}
             />
             <TextField
-              label="Tariffa"
-              value={form.tariffa || ''}
-              onChange={(e) => handleChange('tariffa', e.target.value)}
+              label="Note"
+              value={form.note || ''}
+              onChange={(e) => handleChange('note', e.target.value)}
+              multiline rows={3} 
               fullWidth
-              error={!!errors.tariffa}
-              helperText={errors.tariffa}
+              error={!!errors.note}
+              helperText={errors.note}
             />
           </Stack>
         </DialogContent>
