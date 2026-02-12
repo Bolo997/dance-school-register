@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from '@mui/material';
-import { TextField, MenuItem, Box, Typography, IconButton, Stack, Card, CardContent, Divider, Avatar, Checkbox, FormControlLabel } from '@mui/material';
+import { TextField, MenuItem, Box, Typography, IconButton, Stack, Card, CardContent, Divider, Avatar, Checkbox, FormControlLabel, InputAdornment } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -28,6 +28,7 @@ const CalcoloPreventivo: React.FC = () => {
 	const [selectedCorsoBase, setSelectedCorsoBase] = useState<string>('');
 	const [selectedCorsoAggiuntivo, setSelectedCorsoAggiuntivo] = useState<string>('');
 	const [selectedCorsi, setSelectedCorsi] = useState<string[]>([]);
+	const [scontiCorsi, setScontiCorsi] = useState<Record<string, string>>({});
     const [selectedSocioId, setSelectedSocioId] = useState<string>('');
 	const [openSocioDialog, setOpenSocioDialog] = useState(false);
 	const [formSocio, setFormSocio] = useState<any>({});
@@ -63,42 +64,75 @@ const CalcoloPreventivo: React.FC = () => {
 		return sum;
 	}, [corsiAggiunti]);
 
-	const subtotalIscrizione = useMemo(() => {
-		const tipoNum = parseFloat(tipoValue) || 0;
-		return subtotalCorsi + tipoNum + importoBase;
-	}, [subtotalCorsi, tipoValue]);
+	// Totale corsi aggiuntivi scontato (per riga, in base alla % inserita)
+	const subtotalCorsiScontato = useMemo(() => {
+		return corsiAggiunti.reduce((acc, c) => {
+			const raw = scontiCorsi[c.id];
+			const parsed = raw === undefined || raw === '' ? 0 : Number(raw);
+			const percent = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+			return acc + c.prezzoAggiuntivo * (1 - percent / 100);
+		}, 0);
+	}, [corsiAggiunti, scontiCorsi]);
 
-	// Calcolo valori extra selezionati
-	const valoriExtraSelezionati = extraImporti.map((imp, idx) => {
-		if (!checkedExtras[idx]) return 0;
-		const percent = parseFloat((imp.valore || '').replace('%', '')) / 100;
-		// Stessa logica di visualizzazione
-		if (idx === 0) {
-			return subtotalIscrizione * (1 - percent);
-		} else if (idx === 1) {
-			return importoBase + subtotalCorsi * (1 - percent);
-		} else if (idx === 2) {
-			return importoBase + (subtotalCorsi * (1 - percent));
-		} else if (idx === 3) {
-			return subtotalIscrizione * (1 - percent);
-		}
-		return 0;
-	});
+	// Subtotale corsi = corso base + corsi aggiuntivi (si aggiorna al cambio selezioni)
+	const subtotalCorsiTotale = useMemo(() => {
+		return importoBase + subtotalCorsiScontato;
+	}, [importoBase, subtotalCorsiScontato, subtotalCorsi]);
+
+	// Prezzi scontati (come da formule Excel degli item in lista "ImportiPreventivo")
+	const prezziScontatiExtra = useMemo(() => {
+		return extraImporti.map((imp, idx) => {
+			const percent = parseFloat((imp.valore || '').replace('%', '')) / 100;
+			if (!Number.isFinite(percent)) return subtotalCorsiTotale;
+			if (idx === 0) {
+				return subtotalCorsiTotale * (1 - percent);
+			}
+			if (idx === 1) {
+				return importoBase + subtotalCorsiScontato * (1 - percent);
+			}
+			if (idx === 2) {
+				return importoBase + subtotalCorsiScontato * (1 - percent);
+			}
+			if (idx === 3) {
+				return subtotalCorsiTotale * (1 - percent);
+			}
+			return subtotalCorsiTotale;
+		});
+	}, [extraImporti, importoBase, subtotalCorsi, subtotalCorsiTotale, subtotalCorsiScontato]);
 	// Arrotondamento a multiplo di 5 euro
 	const arrotonda5 = (val: number) => Math.round(val / 5) * 5;
 
-	const sommaValoriExtra = valoriExtraSelezionati.reduce((acc, v) => acc + v, 0);
-	const importoFinaleCorsi = arrotonda5(subtotalIscrizione - sommaValoriExtra);
+	// Importo finale corsi (Excel: =PIÙ.SE(D29;E29;D32;E32;D27;E27;D30;E30;D31;E31))
+	// Qui implementiamo la stessa logica: scegli il primo valore valido in base alle checkbox (senza sommare gli sconti).
+	const importoFinaleCorsi = useMemo(() => {
+		// Default: E27 = Subtotale Corsi
+		let valore = subtotalCorsiTotale;
+
+		// Priorità come in Excel: 1° item, 4° item, poi (default) subtotale, poi 2° e 3°
+		if (checkedExtras[0]) {
+			valore = prezziScontatiExtra[0] ?? subtotalCorsiTotale;
+		} else if (checkedExtras[3]) {
+			valore = prezziScontatiExtra[3] ?? subtotalCorsiTotale;
+		} else if (checkedExtras[1]) {
+			valore = prezziScontatiExtra[1] ?? subtotalCorsiTotale;
+		} else if (checkedExtras[2]) {
+			valore = prezziScontatiExtra[2] ?? subtotalCorsiTotale;
+		}
+
+		return arrotonda5(valore);
+	}, [arrotonda5, checkedExtras, prezziScontatiExtra, subtotalCorsiTotale, subtotalCorsiScontato, subtotalCorsi]);
 
 	// Selezione socio -> popola tipo iscrizione, corso base e corsi aggiuntivi
 	const handleSelectSocio = (id: string) => {
 		setSelectedSocioId(id);
+		setScontiCorsi({});
+		setCheckedExtras([false, false, false, false]);
+		setCheckedQuotaSaggio(false);
 		const socio = soci.find(s => s.id === id);
 		if (!socio) {
 			setSelectedTipo('');
 			setSelectedCorsoBase('');
 			setSelectedCorsi([]);
-			setCheckedQuotaSaggio(false);
 			return;
 		}
 
@@ -152,8 +186,33 @@ const CalcoloPreventivo: React.FC = () => {
 		}
 	};
 
+	const getScontoPercent = (corsoId: string) => {
+		const raw = scontiCorsi[corsoId];
+		if (raw === undefined || raw === '') return 0;
+		const n = Number(raw);
+		if (!Number.isFinite(n)) return 0;
+		return Math.min(100, Math.max(0, n));
+	};
+
+	const handleChangeSconto = (corsoId: string, value: string) => {
+		if (value === '') {
+			setScontiCorsi(prev => ({ ...prev, [corsoId]: '' }));
+			return;
+		}
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return;
+		const clamped = Math.min(100, Math.max(0, parsed));
+		setScontiCorsi(prev => ({ ...prev, [corsoId]: String(clamped) }));
+	};
+
 	const handleRemoveCorso = (id: string) => {
 		setSelectedCorsi(selectedCorsi.filter(cId => cId !== id));
+		setScontiCorsi(prev => {
+			if (!(id in prev)) return prev;
+			const next = { ...prev };
+			delete next[id];
+			return next;
+		});
 	};
 
 	// Pulisci tutti i valori selezionati
@@ -162,6 +221,7 @@ const CalcoloPreventivo: React.FC = () => {
 		setSelectedCorsoBase('');
 		setSelectedCorsoAggiuntivo('');
 		setSelectedCorsi([]);
+		setScontiCorsi({});
 		setCheckedExtras([false, false, false, false]);
 		setCheckedQuotaSaggio(false);
 	};
@@ -273,7 +333,7 @@ const CalcoloPreventivo: React.FC = () => {
 								value={selectedSocioId}
 								onChange={e => handleSelectSocio(e.target.value)}
 								size="small"
-								sx={{ minWidth: 360, bgcolor: 'white', borderRadius: 2 }}
+								sx={{width: 430, bgcolor: 'white', borderRadius: 2 }}
 							>
 								<MenuItem value="">Nessuno</MenuItem>
 								{soci
@@ -295,13 +355,13 @@ const CalcoloPreventivo: React.FC = () => {
 								value={selectedTipo}
 								onChange={e => setSelectedTipo(e.target.value)}
 								size="small"
-								sx={{ minWidth: 360, bgcolor: 'white', borderRadius: 2 }}
+								sx={{ width: 430, bgcolor: 'white', borderRadius: 2 }}
 							>
 								{tipiIscrizione.map(tipo => (
 									<MenuItem key={tipo.id} value={tipo.id}>{tipo.tipo}</MenuItem>
 								))}
 							</TextField>
-							<Typography sx={{ minWidth: 120, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
+							<Typography sx={{ width: 90, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
 								{selectedTipo ? `${tipoValue} €` : ''}
 							</Typography>
 						</Box>
@@ -312,7 +372,7 @@ const CalcoloPreventivo: React.FC = () => {
 								value={selectedCorsoBase}
 								onChange={e => setSelectedCorsoBase(e.target.value)}
 								size="small"
-								sx={{ minWidth: 360, bgcolor: 'white', borderRadius: 2 }}
+								sx={{ width: 430, bgcolor: 'white', borderRadius: 2 }}
 							>
 								{sortedCorsi.map(corso => {
 									const cat = categorie.find((c: any) => c.categoria === corso.categoria);
@@ -332,15 +392,15 @@ const CalcoloPreventivo: React.FC = () => {
 														verticalAlign: 'middle'
 													}}
 												/>
-												<span style={{ fontWeight: 500 }}>{corso.nomeCorso}</span>
+												<span style={{ fontWeight: 350 }}>{corso.nomeCorso}</span>
 												<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzoBase}€</span>
 											</Box>
 										</MenuItem>
 									);
 								})}
 							</TextField>
-							<Typography sx={{ minWidth: 120, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
-								{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corsoBase.prezzoBase} €</span> : ''}
+							<Typography sx={{ width: 90, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
+								{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60}}>{corsoBase.prezzoBase} €</span> : ''}
 							</Typography>
 						</Box>
 						<Box display="flex" alignItems="center" gap={2}>
@@ -350,7 +410,7 @@ const CalcoloPreventivo: React.FC = () => {
 								value={selectedCorsoAggiuntivo}
 								onChange={e => setSelectedCorsoAggiuntivo(e.target.value)}
 								size="small"
-								sx={{ minWidth: 360, bgcolor: 'white', borderRadius: 2 }}
+								sx={{ width: 430, bgcolor: 'white', borderRadius: 2 }}
 							>
 								{sortedCorsi
 									.filter(corso => corso.id !== selectedCorsoBase && !selectedCorsi.includes(corso.id))
@@ -394,7 +454,7 @@ const CalcoloPreventivo: React.FC = () => {
 								<Stack spacing={1}>
 									{corsiAggiunti.map(corso => (
 										<Card key={corso.id} elevation={2} sx={{ bgcolor: "#e3f2fd", borderRadius: 2 }}>
-											<CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
+											<CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
 												<Box
 													sx={{
 														width: 18,
@@ -406,12 +466,29 @@ const CalcoloPreventivo: React.FC = () => {
 														display: 'inline-block',
 													}}
 												/>
-												<Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+												<Box sx={{ flex: 1, display: 'flex'}}>
 													<Typography sx={{ fontWeight: 500, textAlign: 'center' }}>{corso.nomeCorso}</Typography>
 												</Box>
-												<Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-													<Typography sx={{ fontWeight: 500, textAlign: 'right' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{corso.prezzoAggiuntivo} €</span></Typography>
-												</Box>
+														<Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+															<TextField
+																type="number"
+																size="small"
+																value={scontiCorsi[corso.id] ?? ''}
+																onChange={e => handleChangeSconto(corso.id, e.target.value)}
+																sx={{ width: 90, bgcolor: 'white', borderRadius: 2 }}
+																inputProps={{ min: 0, max: 100, step: 1 }}
+																InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+															/>
+
+															<Box sx={{ minWidth: 90, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1 }}>
+																<Typography sx={{ fontWeight: 500, textAlign: 'right', color: '#888', textDecoration: 'line-through' }}>
+																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{corso.prezzoAggiuntivo.toFixed(2)} €</span>
+																</Typography>
+																<Typography sx={{ fontWeight: 700, textAlign: 'right', color: '#1976d2' }}>
+																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{(corso.prezzoAggiuntivo * (1 - getScontoPercent(corso.id) / 100)).toFixed(2)} €</span>
+																</Typography>
+															</Box>
+														</Box>
 												<IconButton size="small" onClick={() => handleRemoveCorso(corso.id)}>
 													<DeleteIcon fontSize="small" />
 												</IconButton>
@@ -424,18 +501,18 @@ const CalcoloPreventivo: React.FC = () => {
 						<Divider sx={{ my: 2 }} />
 						<Box display="flex" alignItems="center" gap={2}>
 							<Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-								<Typography sx={{ minWidth: 180, fontWeight: 600, textAlign: 'right' }}>Subtotale corsi</Typography>
+								<Typography sx={{ minWidth: 180, fontWeight: 600, textAlign: 'right' }}>Importo Totale Corsi Aggiuntivi</Typography>
 							</Box>
 							<Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-								<Typography sx={{ fontWeight: 600, textAlign: 'right', color: '#1976d2' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{subtotalCorsi} €</span></Typography>
+								<Typography sx={{ fontWeight: 600, textAlign: 'right', color: '#1976d2' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{arrotonda5(subtotalCorsiScontato).toFixed(2)} €</span></Typography>
 							</Box>
 						</Box>
 						<Box display="flex" alignItems="center" gap={2}>
 							<Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-								<Typography sx={{ minWidth: 180, fontWeight: 600, textAlign: 'right' }}>Subtotale iscrizione</Typography>
+								<Typography sx={{ minWidth: 180, fontWeight: 600, textAlign: 'right' }}>Subtotale Corsi</Typography>
 							</Box>
 							<Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-								<Typography sx={{ fontWeight: 600, textAlign: 'right', color: '#1976d2' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{subtotalIscrizione} €</span></Typography>
+								<Typography sx={{ fontWeight: 600, textAlign: 'right', color: '#1976d2' }}><span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{arrotonda5(subtotalCorsiTotale)} €</span></Typography>
 							</Box>
 						</Box>
 						{extraImporti.length > 0 && (
@@ -445,14 +522,14 @@ const CalcoloPreventivo: React.FC = () => {
 									const percent = parseFloat((imp.valore || '').replace('%', '')) / 100;
 									let valoreCalcolato = imp.valore;
 									if (idx === 0) {
-										valoreCalcolato = (subtotalIscrizione * (1 - percent)).toFixed(2) + ' €';
+										valoreCalcolato = (arrotonda5(subtotalCorsiTotale * (1 - percent))).toFixed(2) + ' €';
 									} else if (idx === 1) {
-										valoreCalcolato = (importoBase + subtotalCorsi * (1 - percent)).toFixed(2) + ' €';
+										valoreCalcolato = (arrotonda5(importoBase + subtotalCorsiScontato * (1 - percent))).toFixed(2) + ' €';
 									}
 									else if (idx === 2) {
-										valoreCalcolato = (importoBase + (subtotalCorsi * (1 - percent))).toFixed(2) + ' €';
-									}else if (idx === 3) {
-										valoreCalcolato = (subtotalIscrizione * (1 - percent)).toFixed(2) + ' €';
+										valoreCalcolato = (arrotonda5(importoBase + (subtotalCorsiScontato * (1 - percent)))).toFixed(2) + ' €';
+									} else if (idx === 3) {
+										valoreCalcolato = (arrotonda5(subtotalCorsiTotale * (1 - percent))).toFixed(2) + ' €';
 									}
 									return (
 										<Box key={imp.id} display="flex" alignItems="center" gap={2}>

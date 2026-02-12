@@ -21,6 +21,7 @@ import CardContent from '@mui/material/CardContent';
 import Divider from '@mui/material/Divider';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Tooltip from '@mui/material/Tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
@@ -32,6 +33,7 @@ import { ERROR_MESSAGES } from '../constants';
 import { logOperation } from '../utils/logs';
 import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { formatEuro, formatDate } from '../utils/formatters';
 
 const Soci: React.FC = () => {
@@ -51,18 +53,20 @@ const Soci: React.FC = () => {
   const [form, setForm] = useState<Partial<Fattura>>({});
   const [loading, setLoading] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
+  const [paymentAttempted, setPaymentAttempted] = useState(false);
   
   // Stato per i pagamenti mensili
   const [meseSelezionato, setMeseSelezionato] = useState('');
   const [importoPagamento, setImportoPagamento] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('');
   const [quotaSaggioFlag, setQuotaSaggioFlag] = useState(false);
-  const [pagamentiMensili, setPagamentiMensili] = useState<{mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean}[]>([]);
+  const [notePagamento, setNotePagamento] = useState('');
+  const [pagamentiMensili, setPagamentiMensili] = useState<{mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean, note?: string}[]>([]);
 
-  const mesiDisponibili = ['Annuale', '1° Trimestre','2° Trimestre','3° Trimestre',
-    'Settembre', 'Ottobre', 'Novembre', 'Dicembre', 
+  const mesiDisponibili = ['Settembre', 'Ottobre', 'Novembre', 'Dicembre', 
     'Gennaio', 'Febbraio', 'Marzo', 
-    'Aprile', 'Maggio', 'Giugno'
+    'Aprile', 'Maggio', 'Giugno',
+    '1° Trimestre','2° Trimestre','3° Trimestre', 'Annuale', 'Vari'
   ];
 
   // Combina i dati dei soci con le fatture
@@ -74,17 +78,23 @@ const Soci: React.FC = () => {
       const pagamentiMap: { [key: string]: number } = {};
       if (fattura?.pagamenti) {
         fattura.pagamenti.split(';').filter(p => p.trim()).forEach(item => {
+          const addPagamento = (mese: string, importo: number) => {
+            const key = mese.trim();
+            if (!key) return;
+            pagamentiMap[key] = (pagamentiMap[key] || 0) + (importo || 0);
+          };
+
           if (item.includes('-')) {
             const parts = item.split('-');
             const mese = parts[0]?.trim();
             const importoStr = parts[1]?.trim();
             if (mese && importoStr) {
-              pagamentiMap[mese] = parseFloat(importoStr) || 0;
+              addPagamento(mese, parseFloat(importoStr) || 0);
             }
           } else {
             const [mese, importo] = item.split(':');
             if (mese && importo) {
-              pagamentiMap[mese.trim()] = parseFloat(importo) || 0;
+              addPagamento(mese, parseFloat(importo) || 0);
             }
           }
         });
@@ -99,20 +109,21 @@ const Soci: React.FC = () => {
         quotaMensile: socio.quotaMensile || '',
         sospeso: socio.sospeso || false,
         quotaSaggio: socio.quotaSaggio || '',
-        primoTrimestre: pagamentiMap['1° Trimestre'] || '',
-        secondoTrimestre: pagamentiMap['2° Trimestre'] || '',
-        terzoTrimestre: pagamentiMap['3° Trimestre'] || '',
-        annuale: pagamentiMap['Annuale'] || '',
-        settembre: pagamentiMap['Settembre'] || '',
-        ottobre: pagamentiMap['Ottobre'] || '',
-        novembre: pagamentiMap['Novembre'] || '',
-        dicembre: pagamentiMap['Dicembre'] || '',
-        gennaio: pagamentiMap['Gennaio'] || '',
-        febbraio: pagamentiMap['Febbraio'] || '',
-        marzo: pagamentiMap['Marzo'] || '',
-        aprile: pagamentiMap['Aprile'] || '',
-        maggio: pagamentiMap['Maggio'] || '',
-        giugno: pagamentiMap['Giugno'] || '',
+        primoTrimestre: pagamentiMap['1° Trimestre'] ?? '',
+        secondoTrimestre: pagamentiMap['2° Trimestre'] ?? '',
+        terzoTrimestre: pagamentiMap['3° Trimestre'] ?? '',
+        annuale: pagamentiMap['Annuale'] ?? '',
+        vari: pagamentiMap['Vari'],
+        settembre: pagamentiMap['Settembre'] ?? '',
+        ottobre: pagamentiMap['Ottobre'] ?? '',
+        novembre: pagamentiMap['Novembre'] ?? '',
+        dicembre: pagamentiMap['Dicembre'] ?? '',
+        gennaio: pagamentiMap['Gennaio'] ?? '',
+        febbraio: pagamentiMap['Febbraio'] ?? '',
+        marzo: pagamentiMap['Marzo'] ?? '',
+        aprile: pagamentiMap['Aprile'] ?? '',
+        maggio: pagamentiMap['Maggio'] ?? '',
+        giugno: pagamentiMap['Giugno'] ?? '',
         pagamenti: fattura?.pagamenti || '',
         creato: fattura?.creato || '',
         modificato: fattura?.modificato,
@@ -128,6 +139,14 @@ const Soci: React.FC = () => {
     return value || '-';
   }, [soci, form.idSocio]);
 
+  const sociOrdinati = useMemo(() => {
+    return [...soci].sort((a, b) => {
+      const byCognome = (a.cognome || '').localeCompare((b.cognome || ''), 'it', { sensitivity: 'base' });
+      if (byCognome !== 0) return byCognome;
+      return (a.nome || '').localeCompare((b.nome || ''), 'it', { sensitivity: 'base' });
+    });
+  }, [soci]);
+
   const parsePagamenti = useCallback((pagamentiString: string) => {
     if (!pagamentiString) {
       setPagamentiMensili([]);
@@ -135,13 +154,15 @@ const Soci: React.FC = () => {
     }
     const parsed = pagamentiString.split(';').filter(p => p.trim()).map(item => {
       if (item.includes('-')) {
-        const [mese, importoStr, metodo, data, quotaSaggioStr] = item.split('-');
+        const [mese, importoStr, metodo, data, quotaSaggioStr, ...noteParts] = item.split('-');
+        const note = (noteParts || []).join('-').trim();
         return {
           mese: (mese || '').trim(),
           importo: parseFloat(importoStr || '0') || 0,
           metodo: (metodo || '').trim(),
           data: (data || '').trim(),
-          quotaSaggio: (quotaSaggioStr || '').trim().toLowerCase() === 'true'
+          quotaSaggio: (quotaSaggioStr || '').trim().toLowerCase() === 'true',
+          note: note || undefined
         };
       }
       const [mese, importo] = item.split(':');
@@ -154,11 +175,13 @@ const Soci: React.FC = () => {
     setImportoPagamento('');
     setMetodoPagamento('');
     setQuotaSaggioFlag(false);
+    setNotePagamento('');
+    setPaymentAttempted(false);
     if (row) {
       setEditingFattura(row._hasFattura ? { ...row } : null);
       setForm({
         idSocio: row.idSocio,
-        pagamenti: row.pagamenti,   
+        pagamenti: row.pagamenti,
       });
       calcolaImporto(row.quotaMensile, row.quotaSaggio);
       parsePagamenti(row.pagamenti || '');
@@ -172,28 +195,67 @@ const Soci: React.FC = () => {
     setOpenDialog(true);
   }, [clearAllErrors, parsePagamenti]);
 
-  const serializePagamenti = useCallback((pagamenti: {mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean}[]) => {
+  const serializePagamenti = useCallback((pagamenti: {mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean, note?: string}[]) => {
     return pagamenti
-      .map(p => `${p.mese}-${p.importo.toFixed(2)}-${(p.metodo || '').trim()}-${(p.data || '').trim()}-${p.quotaSaggio ? 'true' : 'false'}`)
+      .map(p => {
+        const base = `${p.mese}-${p.importo.toFixed(2)}-${(p.metodo || '').trim()}-${(p.data || '').trim()}-${p.quotaSaggio ? 'true' : 'false'}`;
+        const note = (p.note || '').toString().replace(/\s+/g, ' ').replace(/;/g, ',').trim();
+        return note ? `${base}-${note}` : base;
+      })
       .join(';');
   }, []);
 
   const calcolaImporto = useCallback((quotaMensile: number | string, quotaSaggio: number | string) => {
+    if (!meseSelezionato) {
+      setImportoPagamento('');
+      return;
+    }
     const qm = (typeof quotaMensile === 'string' ? parseFloat(quotaMensile) : quotaMensile) || 0;
     const qs = (typeof quotaSaggio === 'string' ? parseFloat(quotaSaggio) : quotaSaggio) || 0;
     let importoFinale = 0;
     let moltiplicatore = 1;
     if (meseSelezionato === 'Annuale') {
       moltiplicatore = 9;
+      importoFinale = (qm * moltiplicatore) - ((qm * 9) / 100 * 15);
     } else if (meseSelezionato.indexOf('Trimestre') !== -1) {
       moltiplicatore = 3;
+      importoFinale = (qm * moltiplicatore) - ((qm * 3) / 100 * 15);
+    } else if (meseSelezionato === 'Vari') {
+      setImportoPagamento('');
+      return;
+    } else {
+      importoFinale = qm;
     }
-    importoFinale = qm * moltiplicatore;
     if (quotaSaggioFlag) {
       importoFinale = importoFinale + (qs * moltiplicatore);
     }
-    setImportoPagamento(importoFinale.toString());
+    setImportoPagamento(importoFinale > 0 ? importoFinale.toString() : '');
   }, [meseSelezionato, quotaSaggioFlag]);
+
+  const handleSocioSelect = useCallback((socioId: string) => {
+    clearAllErrors();
+    setMeseSelezionato('');
+    setImportoPagamento('');
+    setMetodoPagamento('');
+    setQuotaSaggioFlag(false);
+    setNotePagamento('');
+    setPaymentAttempted(false);
+
+    if (!socioId) {
+      setEditingFattura(null);
+      setForm({});
+      setPagamentiMensili([]);
+      return;
+    }
+
+    const fattura = fatture.find((f) => f.idSocio === socioId) || null;
+    setEditingFattura(fattura);
+    setForm({
+      idSocio: socioId,
+      pagamenti: fattura?.pagamenti || '',
+    });
+    parsePagamenti(fattura?.pagamenti || '');
+  }, [clearAllErrors, fatture, parsePagamenti]);
 
   // Ricalcola importo al cambio di Periodo, Quota Saggio o Nome e Cognome
   useEffect(() => {
@@ -229,39 +291,37 @@ const Soci: React.FC = () => {
     setImportoPagamento('');
     setMetodoPagamento('');
     setQuotaSaggioFlag(false);
+    setNotePagamento('');
+    setPaymentAttempted(false);
     clearAllErrors();
   }, [clearAllErrors]);
 
   const handleAggiungiPagamento = useCallback(() => {
-    if (!meseSelezionato || !importoPagamento || parseFloat(importoPagamento) <= 0 || !metodoPagamento.trim()) {
-      return;
-    }
+    setPaymentAttempted(true);
+    const importoNum = parseFloat(importoPagamento);
+    if (!meseSelezionato || !metodoPagamento.trim() || !importoPagamento || Number.isNaN(importoNum) || importoNum <= 0) return;
+
+    const cleanedNote = notePagamento.toString().replace(/\s+/g, ' ').replace(/;/g, ',').trim();
+
     const nowStr = formatDate(new Date());
-    const meseEsistente = pagamentiMensili.find(p => p.mese === meseSelezionato);
-    if (meseEsistente) {
-      setPagamentiMensili(prev => 
-        prev.map(p => p.mese === meseSelezionato 
-          ? { ...p, importo: parseFloat(importoPagamento), metodo: metodoPagamento.trim(), data: nowStr, quotaSaggio: quotaSaggioFlag } 
-          : p
-        )
-      );
-    } else {
       setPagamentiMensili(prev => [...prev, { 
         mese: meseSelezionato, 
-        importo: parseFloat(importoPagamento),
+        importo: importoNum,
         metodo: metodoPagamento.trim(),
         data: nowStr,
-        quotaSaggio: quotaSaggioFlag
+        quotaSaggio: quotaSaggioFlag,
+        note: cleanedNote || undefined
       }]);
-    }
     setMeseSelezionato('');
     setImportoPagamento('');
     setMetodoPagamento('');
     setQuotaSaggioFlag(false);
-  }, [meseSelezionato, importoPagamento, metodoPagamento, quotaSaggioFlag, pagamentiMensili]);
+    setNotePagamento('');
+    setPaymentAttempted(false);
+  }, [meseSelezionato, importoPagamento, metodoPagamento, quotaSaggioFlag, pagamentiMensili, notePagamento]);
 
-  const handleRimuoviPagamento = useCallback((mese: string) => {
-    setPagamentiMensili(prev => prev.filter(p => p.mese !== mese));
+  const handleRimuoviPagamento = useCallback((index: number) => {
+    setPagamentiMensili(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   const handleChange = useCallback((field: keyof Fattura, value: string | number) => {
@@ -320,11 +380,7 @@ const Soci: React.FC = () => {
     { key: 'quotaIscrizione', label: 'Quota Iscrizione', width: '100px', align: 'center', format: formatEuro },
     { key: 'quotaMensile', label: 'Quota Mensile', width: '100px', align: 'center', format: formatEuro },
     { key: 'quotaSaggio', label: 'Quota Saggio', width: '100px', align: 'center', format: formatEuro },
-    { key: 'annuale', label: 'Annuale', width: '140px', align: 'center', format: formatEuro },
-    { key: 'primoTrimestre', label: '1° Trimestre', width: '140px', align: 'center', format: formatEuro },
-    { key: 'secondoTrimestre', label: '2° Trimestre', width: '140px', align: 'center', format: formatEuro },
-    { key: 'terzoTrimestre', label: '3° Trimestre', width: '140px', align: 'center', format: formatEuro },
-    { key: 'settembre', label: 'Settembre', width: '100px', align: 'center', format: formatEuro },
+     { key: 'settembre', label: 'Settembre', width: '100px', align: 'center', format: formatEuro },
     { key: 'ottobre', label: 'Ottobre', width: '100px', align: 'center', format: formatEuro },
     { key: 'novembre', label: 'Novembre', width: '100px', align: 'center', format: formatEuro },
     { key: 'dicembre', label: 'Dicembre', width: '100px', align: 'center', format: formatEuro },
@@ -334,7 +390,12 @@ const Soci: React.FC = () => {
     { key: 'aprile', label: 'Aprile', width: '100px', align: 'center', format: formatEuro },
     { key: 'maggio', label: 'Maggio', width: '100px', align: 'center', format: formatEuro },
     { key: 'giugno', label: 'Giugno', width: '100px', align: 'center', format: formatEuro },
-  ]), []);
+    { key: 'primoTrimestre', label: '1° Trimestre', width: '140px', align: 'center', format: formatEuro },
+    { key: 'secondoTrimestre', label: '2° Trimestre', width: '140px', align: 'center', format: formatEuro },
+    { key: 'terzoTrimestre', label: '3° Trimestre', width: '140px', align: 'center', format: formatEuro },
+    { key: 'annuale', label: 'Annuale', width: '140px', align: 'center', format: formatEuro },
+    { key: 'vari', label: 'Vari', width: '140px', align: 'center', format: formatEuro },
+    ]), []);
 
   // Offset di sinistra per colonne sticky (usa larghezza azioni configurabile)
   const stickyOffsets = useMemo(() => {
@@ -366,7 +427,7 @@ const Soci: React.FC = () => {
     if (annFilled) {
       const annIdx = fattureColumns.findIndex(c => c.key === 'annuale');
       const colIdx = fattureColumns.findIndex(c => c.key === key);
-      if (colIdx > annIdx) return green;
+      if (colIdx < annIdx && colIdx > 5) return green;
     }
 
     // Trimestri: mark months in respective ranges if trimester is filled
@@ -440,7 +501,7 @@ const Soci: React.FC = () => {
       />
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingFattura ? 'Modifica Fattura' : 'Nuova Fattura'}</DialogTitle>
+        <DialogTitle>Fatturazione</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -448,11 +509,11 @@ const Soci: React.FC = () => {
               label="Nome e Cognome"
               fullWidth
               value={form.idSocio || ''}
-              onChange={(e) => handleChange('idSocio', e.target.value)}
+              onChange={(e) => handleSocioSelect(e.target.value)}
               error={!!errors.idSocio}
               helperText={errors.idSocio}
             >
-              {soci.map((socio) => (
+              {sociOrdinati.map((socio) => (
                 <MenuItem key={socio.id} value={socio.id}>
                   {socio.cognome} {socio.nome}
                 </MenuItem>
@@ -475,8 +536,15 @@ const Soci: React.FC = () => {
                       label="Periodo"
                       size="small"
                       value={meseSelezionato}
-                      onChange={(e) => setMeseSelezionato(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setMeseSelezionato(value);
+                        if (value === 'Vari' || value === 'Varie') setQuotaSaggioFlag(false);
+                      }}
                       sx={{ flex: 1, maxWidth: 242 }}
+                      required
+                      error={paymentAttempted && !meseSelezionato}
+                      helperText={paymentAttempted && !meseSelezionato ? 'Campo obbligatorio' : ''}
                     >
                       {mesiDisponibili.map((mese) => (
                         <MenuItem key={mese} value={mese}>
@@ -484,23 +552,33 @@ const Soci: React.FC = () => {
                         </MenuItem>
                       ))}
                     </TextField>
-                  <FormControlLabel
-                    control={<Checkbox checked={quotaSaggioFlag} onChange={(e) => setQuotaSaggioFlag(e.target.checked)} />}
-                    label={`Quota Saggio (${quotaSaggioDisplay})`}
-                    labelPlacement="end"
-                    sx={{ ml: 1 }}
-                  />
+                    {meseSelezionato !== 'Vari' && meseSelezionato !== 'Varie' && (
+                      <FormControlLabel
+                        control={<Checkbox checked={quotaSaggioFlag} onChange={(e) => setQuotaSaggioFlag(e.target.checked)} />}
+                        label={`Quota Saggio (${quotaSaggioDisplay})`}
+                        labelPlacement="end"
+                        sx={{ ml: 1 }}
+                      />
+                    )}
                   </Box>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 2 }}>
                     <TextField
+                      select
                       label="Metodo di pagamento"
-                      type="text"
                       size="small"
-                      inputProps={{ step: '0.01', min: '0' }}
                       value={metodoPagamento}
                       onChange={(e) => setMetodoPagamento(e.target.value)}
                       fullWidth
-                    />
+                      required
+                      error={paymentAttempted && !metodoPagamento.trim()}
+                      helperText={paymentAttempted && !metodoPagamento.trim() ? 'Campo obbligatorio' : ''}
+                    >
+                      <MenuItem value="CARTA">CARTA</MenuItem>
+                      <MenuItem value="BONIFICO">BONIFICO</MenuItem>
+                      <MenuItem value="CONTANTI">CONTANTI</MenuItem>
+                      <MenuItem value="VOUCHER">VOUCHER</MenuItem>
+                      <MenuItem value="COMPENSAZIONE">COMPENSAZIONE</MenuItem>
+                    </TextField>
                     <TextField
                       label="Importo €"
                       type="number"
@@ -509,13 +587,26 @@ const Soci: React.FC = () => {
                       onChange={(e) => setImportoPagamento(e.target.value)}
                       inputProps={{ step: '0.01', min: '0' }}
                       fullWidth
+                      required
+                      error={paymentAttempted && (!importoPagamento || Number.isNaN(parseFloat(importoPagamento)) || parseFloat(importoPagamento) <= 0)}
+                      helperText={paymentAttempted && (!importoPagamento || Number.isNaN(parseFloat(importoPagamento)) || parseFloat(importoPagamento) <= 0) ? 'Inserisci un importo valido' : ''}
                     />
-                  </Box>
+                    </Box>
+                  <TextField
+                    label="Note"
+                    fullWidth
+                    multiline
+                    rows={2}
+                    value={notePagamento}
+                    sx={{ marginBottom: 2 }}
+                    onChange={(e) => setNotePagamento(e.target.value)}
+                  />
+                  
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Button
                       variant="contained"
                       onClick={handleAggiungiPagamento}
-                      disabled={!meseSelezionato || !importoPagamento || !metodoPagamento.trim()}
+                      disabled={loading}
                       startIcon={<AddIcon />}
                       sx={{ whiteSpace: 'nowrap' }}
                     >
@@ -532,9 +623,9 @@ const Soci: React.FC = () => {
                     Pagamenti registrati ({pagamentiMensili.length})
                   </Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                    {pagamentiMensili.map((pag) => (
+                    {pagamentiMensili.map((pag, index) => (
                       <Card 
-                        key={pag.mese}
+                        key={`${pag.mese}-${pag.data || ''}-${index}`}
                         variant="outlined" 
                         sx={{ 
                           bgcolor: 'primary.50',
@@ -552,9 +643,18 @@ const Soci: React.FC = () => {
                               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                 {pag.mese}
                               </Typography>
-                              <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600 }}>
-                                €{pag.importo.toFixed(2)}
-                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600 }}>
+                                  €{pag.importo.toFixed(2)}
+                                </Typography>
+                                {!!pag.note?.trim() && (
+                                  <Tooltip title={pag.note} arrow>
+                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: 'text.secondary' }}>
+                                      <VisibilityIcon fontSize="small" />
+                                    </Box>
+                                  </Tooltip>
+                                )}
+                              </Box>
                               <Box sx={{ mt: 0.5 }}>
                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                   Data: {pag.data || '-'}
@@ -569,7 +669,7 @@ const Soci: React.FC = () => {
                             </Box>
                             <IconButton 
                               size="small" 
-                              onClick={() => handleRimuoviPagamento(pag.mese)}
+                              onClick={() => handleRimuoviPagamento(index)}
                               sx={{ color: 'error.main' }}
                             >
                               ×

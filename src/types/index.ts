@@ -41,6 +41,7 @@ export interface Fattura {
   maggio: number;
   giugno: number;
   pagamenti: string;
+  note?: string;
   creato: string;
   modificato?: string;
 }
