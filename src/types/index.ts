@@ -106,12 +106,21 @@ export interface Socio {
   quotaSaggio: string;
   base: string;
   corsi: string;
+  accademia?: string;
   nomeGenitore: string;
   cognomeGenitore: string;
   codFiscaleGenitore: string;
   note: string;
   creato: string;
   modificato?: string;
+}
+
+export interface Accademia {
+  id: string;
+  pacchetto: string;
+  categoria: string;
+  corsi: string;
+  prezzo: number;
 }
 
 export interface Insegnante {

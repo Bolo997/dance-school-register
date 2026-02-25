@@ -18,12 +18,15 @@ import PeopleIcon from '@mui/icons-material/People';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import SchoolIcon from '@mui/icons-material/School';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = React.memo(() => {
   const { signOut, profile } = useAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [academyAnchorEl, setAcademyAnchorEl] = useState<null | HTMLElement>(null);
 
   const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -31,6 +34,14 @@ const Navbar = React.memo(() => {
 
   const handleMenuClose = useCallback(() => {
     setAnchorEl(null);
+  }, []);
+
+  const handleAcademyMenuToggle = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setAcademyAnchorEl((prev) => (prev ? null : event.currentTarget));
+  }, []);
+
+  const handleAcademyMenuCloseNow = useCallback(() => {
+    setAcademyAnchorEl(null);
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -50,9 +61,51 @@ const Navbar = React.memo(() => {
       <Button color="inherit" component={RouterLink} to="/preventivo" startIcon={<CalculateIcon />}>
         Calcolo Preventivo
       </Button>
-      <Button color="inherit" component={RouterLink} to="/orario-anno-accademico" startIcon={<CalendarMonthIcon />}>
-        Orario Anno Accademico
-      </Button>
+      <Box sx={{ display: 'inline-flex' }}>
+        <Button
+          id="corsi-accademia-button"
+          color="inherit"
+          startIcon={<CalendarMonthIcon />}
+          aria-controls={academyAnchorEl ? 'corsi-accademia-menu' : undefined}
+          aria-haspopup="true"
+          aria-expanded={academyAnchorEl ? 'true' : undefined}
+          onClick={handleAcademyMenuToggle}
+        >
+          Corsi e accademia
+        </Button>
+        <Menu
+          id="corsi-accademia-menu"
+          anchorEl={academyAnchorEl}
+          open={Boolean(academyAnchorEl)}
+          onClose={handleAcademyMenuCloseNow}
+          disablePortal
+          disableAutoFocusItem
+          disableRestoreFocus
+          anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+          transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+          MenuListProps={{ 'aria-labelledby': 'corsi-accademia-button', autoFocusItem: false }}
+          PaperProps={{ sx: { minWidth: 260, mt: 1 } }}
+        >
+          <MenuItem component={RouterLink} to="/orario-anno-accademico" onClick={handleAcademyMenuCloseNow}>
+            <ListItemIcon>
+              <CalendarMonthIcon fontSize="small" />
+            </ListItemIcon>
+            Orario anno accademico
+          </MenuItem>
+          <MenuItem component={RouterLink} to="/accademia" onClick={handleAcademyMenuCloseNow}>
+            <ListItemIcon>
+              <WorkspacePremiumIcon fontSize="small" />
+            </ListItemIcon>
+            Accademia
+          </MenuItem>
+          <MenuItem component={RouterLink} to="/corsi-sale/corsi" onClick={handleAcademyMenuCloseNow}>
+            <ListItemIcon>
+              <MenuBookIcon fontSize="small" />
+            </ListItemIcon>
+            Gestione corsi
+          </MenuItem>
+        </Menu>
+      </Box>
       <Button color="inherit" component={RouterLink} to="/soci" startIcon={<PeopleIcon />}>
         Registro Soci
       </Button>

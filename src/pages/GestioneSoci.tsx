@@ -58,6 +58,7 @@ const fixedColumns = [
   { key: 'quotaSaggio', label: 'Quota Saggio', width: '110px', align: 'center', format: formatEuro },
 ];
 const scrollableColumns = [
+  { key: 'accademia', label: 'Accademia', width: '250px' },
   { key: 'base', label: 'Base', width: '250px' },
   { key: 'corsi', label: 'Corsi', width: '250px' },
   { key: 'codFiscale', label: 'Cod. Fiscale', width: '250px' },

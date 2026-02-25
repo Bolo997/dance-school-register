@@ -17,6 +17,7 @@ const OrarioAnnoAccademico = lazy(() => import('./pages/OrarioAnnoAccademico'));
 const GestioneCorsi = lazy(() => import('./pages/GestioneCorsi'));
 const GestioneSale = lazy(() => import('./pages/GestioneSale'));
 const GestioneTipologie = lazy(() => import('./pages/GestioneTipologie'));
+const Accademia = lazy(() => import('./pages/Accademia'));
 const GestioneSoci = lazy(() => import('./pages/GestioneSoci'));
 const GestioneInsegnanti = lazy(() => import('./pages/GestioneInsegnanti'));
 const ModuloIscrizione = lazy(() => import('./pages/ModuloIscrizione'));
@@ -62,6 +63,7 @@ function App() {
                             <Route path="/insegnanti" element={<Insegnanti />} />
                             <Route path="/preventivo" element={<CalcoloPreventivo />} />
                             <Route path="/orario-anno-accademico" element={<OrarioAnnoAccademico />} />
+                            <Route path="/accademia" element={<Accademia />} />
                             <Route path="/gestione-soci" element={<GestioneSoci />} />
                             <Route path="/modulo-iscrizione/:id" element={<ModuloIscrizione />} />
                             <Route path="/gestione-insegnanti" element={<GestioneInsegnanti />} />

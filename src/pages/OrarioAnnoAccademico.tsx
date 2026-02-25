@@ -4,6 +4,7 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -14,14 +15,107 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Paper from '@mui/material/Paper';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
 import CircularProgress from '@mui/material/CircularProgress';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import CategoryIcon from '@mui/icons-material/Category';
+import GroupIcon from '@mui/icons-material/Group';
 import { useSupabaseData } from '../hooks/useSupabaseData';
-import { CategoriaCorso, Corso, InfoSito } from '../types';
+import { Accademia, CategoriaCorso, Corso, InfoSito, Socio } from '../types';
 import { GIORNI_SETTIMANA } from '../constants';
 import { AutoStories } from '@mui/icons-material';
+import { listHasToken, normalizeToken, parseListTokens } from '../utils/listTokens';
+
+interface PartecipantiDialogProps {
+  open: boolean;
+  nomeCorso: string;
+  onClose: () => void;
+}
+
+const PartecipantiDialog: React.FC<PartecipantiDialogProps> = ({ open, nomeCorso, onClose }) => {
+  const { data: soci, loading, error } = useSupabaseData<Socio>('Soci');
+  const {
+    data: accademia,
+    loading: loadingAccademia,
+    error: errorAccademia,
+  } = useSupabaseData<Accademia>('Accademia');
+
+  const pacchettiCheIncludonoCorso = useMemo(() => {
+    const corso = normalizeToken(nomeCorso);
+    if (!corso) return new Set<string>();
+
+    const tokens = (accademia || [])
+      .filter((a) => listHasToken(a.corsi, nomeCorso))
+      .map((a) => normalizeToken(a.pacchetto))
+      .filter(Boolean);
+
+    return new Set(tokens);
+  }, [accademia, nomeCorso]);
+
+  const partecipanti = useMemo(() => {
+    const corso = (nomeCorso || '').trim().toLowerCase();
+    if (!corso) return [];
+
+    const socioHaPacchettoCheIncludeCorso = (socio: Socio): boolean => {
+      if (!socio.accademia || pacchettiCheIncludonoCorso.size === 0) return false;
+      return parseListTokens(socio.accademia).some((token) => pacchettiCheIncludonoCorso.has(normalizeToken(token)));
+    };
+
+    return soci
+      .filter((socio) => {
+        const base = (socio.base || '').toLowerCase();
+        const corsi = (socio.corsi || '').toLowerCase();
+        return base.includes(corso) || corsi.includes(corso) || socioHaPacchettoCheIncludeCorso(socio);
+      })
+      .slice()
+      .sort((a, b) => {
+        const cognomeA = (a.cognome || '').toLowerCase();
+        const cognomeB = (b.cognome || '').toLowerCase();
+        const byCognome = cognomeA.localeCompare(cognomeB);
+        if (byCognome !== 0) return byCognome;
+        return (a.nome || '').toLowerCase().localeCompare((b.nome || '').toLowerCase());
+      });
+  }, [soci, nomeCorso, pacchettiCheIncludonoCorso]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Partecipanti ({partecipanti.length})</DialogTitle>
+      <DialogContent sx={{ maxHeight: 500, overflowY: 'auto' }}>
+        {loading || loadingAccademia ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : error || errorAccademia ? (
+          <Typography variant="body2" color="error">
+            {error || errorAccademia}
+          </Typography>
+        ) : partecipanti.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Nessun socio trovato
+          </Typography>
+        ) : (
+          <List dense>
+            {partecipanti.map((socio) => (
+              <ListItem key={socio.id} disableGutters>
+                <ListItemText primary={`${socio.cognome} ${socio.nome}`} />
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Chiudi</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 const OrarioAnnoAccademico: React.FC = () => {
   const navigate = useNavigate();
@@ -29,6 +123,8 @@ const OrarioAnnoAccademico: React.FC = () => {
   const { data: corsi, loading: loadingCorsi } = useSupabaseData<Corso>('Corsi');
   const { data: infoSito } = useSupabaseData<InfoSito>('InfoSito');
   const [expandedCategorie, setExpandedCategorie] = useState<Set<string>>(new Set());
+  const [openPartecipanti, setOpenPartecipanti] = useState(false);
+  const [selectedNomeCorso, setSelectedNomeCorso] = useState<string | null>(null);
 
   const anno = useMemo(() => infoSito.find(info => info.campo === 'anno')?.valore || '', [infoSito]);
 
@@ -71,6 +167,16 @@ const OrarioAnnoAccademico: React.FC = () => {
     });
   }, [corsi]);
 
+  const handleOpenPartecipanti = useCallback((nomeCorso: string) => {
+    setSelectedNomeCorso(nomeCorso);
+    setOpenPartecipanti(true);
+  }, []);
+
+  const handleClosePartecipanti = useCallback(() => {
+    setOpenPartecipanti(false);
+    setSelectedNomeCorso(null);
+  }, []);
+
   if (loadingCategorie || loadingCorsi) {
     return (
       <Container maxWidth="xl">
@@ -86,6 +192,14 @@ const OrarioAnnoAccademico: React.FC = () => {
       <Typography variant="h4" component="h1" gutterBottom sx={{ mt: 4, mb: 3 }}>
         Orario Anno Accademico {anno}
       </Typography>
+
+      {openPartecipanti && selectedNomeCorso && (
+        <PartecipantiDialog
+          open={openPartecipanti}
+          nomeCorso={selectedNomeCorso}
+          onClose={handleClosePartecipanti}
+        />
+      )}
 
       <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
         <Button
@@ -180,7 +294,18 @@ const OrarioAnnoAccademico: React.FC = () => {
                         corsiUnici.map((corso) => (
                           <TableRow key={corso.id} sx={{ height: '32px' }}>
                             <TableCell sx={{ fontWeight: 'medium', py: 0.25 }}>
-                              {corso.nomeCorso}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography variant="body2" fontWeight="medium">
+                                  {corso.nomeCorso}
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  aria-label="Partecipanti"
+                                  onClick={() => handleOpenPartecipanti(corso.nomeCorso)}
+                                >
+                                  <GroupIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
                             </TableCell>
                             {GIORNI_SETTIMANA.map((giorno) => {
                               const corsiInSlot = getCorsiForCategoriaAndDay(categoria.categoria, giorno).filter(

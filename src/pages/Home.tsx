@@ -10,18 +10,20 @@ import PeopleIcon from '@mui/icons-material/People';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import SchoolIcon from '@mui/icons-material/School';
+import { WorkspacePremium } from '@mui/icons-material';
 
 const Home: React.FC = () => {
   const sections = [ 
     { title: 'Calcolo Preventivo', path: '/preventivo', icon: <CalculateIcon sx={{ fontSize: 60 }} /> },
     { title: 'Orario Anno Accademico', path: '/orario-anno-accademico', icon: <CalendarMonthIcon sx={{ fontSize: 60 }} /> },
+    { title: 'Accademia', path: '/accademia', icon: <WorkspacePremium sx={{ fontSize: 60 }} /> },
     { title: 'Registro Soci', path: '/soci', icon: <PeopleIcon sx={{ fontSize: 60 }} /> },
     { title: 'Registro Insegnanti', path: '/insegnanti', icon: <SchoolIcon sx={{ fontSize: 60 }} /> },
   ];
 
   return (
     <Container maxWidth="lg" sx={{ position: 'relative', minHeight: '100vh', pb: 8 }}>
-      <Typography variant="h3" component="h1" gutterBottom sx={{ mt: 4, mb: 4, textAlign: 'center' }}>
+      <Typography variant="h3" component="h1" gutterBottom sx={{ mt: 1, mb: 4, textAlign: 'center' }}>
         Centro Studi Danza
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center' }}>

@@ -70,7 +70,7 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
     </>
 );
 
-const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie = [], corsi = [], errors = {} }: any) => (
+const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchettiOrdinati = [], categorie = [], corsi = [], accademia = [], errors = {} }: any) => (
     <>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main', mt: 2, pb: 1, borderBottom: 2, borderColor: 'primary.main' }}>Iscrizione</Typography>
         <Stack spacing={2}>
@@ -125,6 +125,9 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
                     value={form.base || ''}
                     onChange={e => handleField('base', e.target.value)}
                 >
+                    <MenuItem value="">
+                        <em>Nesuno</em>
+                    </MenuItem>
                     {nomiCorsiOrdinati.map((nomeCorso: string) => {
                         // Trova la categoria del corso
                         const corsoObj = corsi?.find((c: any) => c.nomeCorso === nomeCorso);
@@ -138,6 +141,29 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
                 </TextField>
                 <TextField
                     select
+                    label="Accademia"
+                    sx={{ flex: 1 }}
+                    value={form.accademia || ''}
+                    onChange={e => handleField('accademia', e.target.value)}
+                >
+                    <MenuItem value="">
+                        <em>Nesuno</em>
+                    </MenuItem>
+                    {pacchettiOrdinati.map((pacchetto: string) => {
+                        const pacchettoObj = accademia?.find((a: any) => a.pacchetto === pacchetto);
+                        const pacchettoCat = pacchettoObj ? categorie?.find((cat: any) => cat.categoria === pacchettoObj.categoria) : null;
+                        return (
+                            <MenuItem key={pacchetto} value={pacchetto}>
+                                <Box sx={{ px: 1, py: 0.5, borderRadius: 1, backgroundColor: (pacchettoCat?.colore ? pacchettoCat.colore + '40' : '#e3f2fd'), display: 'inline-block' }}>{pacchetto}</Box>
+                            </MenuItem>
+                        );
+                    })}
+                </TextField>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+                
+                <TextField
+                    select
                     label="Corsi"
                     sx={{ flex: 1 }}
                     value={Array.isArray(form.corsi) ? form.corsi : (form.corsi ? String(form.corsi).split(';').filter(Boolean) : [])}
@@ -147,6 +173,12 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], categorie
                         handleField('corsi', Array.isArray(value) ? value.join(';') : value);
                     }}
                     SelectProps={{
+                         autoWidth: true,
+                MenuProps: {
+                  PaperProps: {
+                    sx: { width: 550, maxWidth: 550 },
+                  },
+                },
                         multiple: true,
                         renderValue: (selected: unknown) => {
                             const values = Array.isArray(selected) ? selected as string[] : [];
@@ -208,10 +240,11 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
     const [form, setForm] = useState<any>(initialForm || {});
     const { data: corsi } = require('../hooks/useSupabaseData').useSupabaseData('Corsi');
     const { data: categorie } = require('../hooks/useSupabaseData').useSupabaseData('CategorieCorsi');
-        const { errors, validate, setError, clearAllErrors } = useFormValidation();
-        const [showErrors, setShowErrors] = useState(false);
-        const [loading, setLoading] = useState(false);
-        const [openSuccess, setOpenSuccess] = useState(false);
+    const { data: accademia } = require('../hooks/useSupabaseData').useSupabaseData('Accademia');
+    const { errors, validate, setError, clearAllErrors } = useFormValidation();
+    const [showErrors, setShowErrors] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [openSuccess, setOpenSuccess] = useState(false);
 
     useEffect(() => {
         if (open) {
@@ -238,6 +271,16 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
         });
         return Array.from(new Set(corsiOrdinati.map((c: any) => c.nomeCorso)));
     }, [corsi]);
+
+    const pacchettiOrdinati = useMemo(() => {
+        if (!accademia) return [];
+        const accademiaOrdinata = [...accademia].sort((a: any, b: any) => {
+            const categoriaCompare = (a.categoria || '').localeCompare(b.categoria || '');
+            if (categoriaCompare !== 0) return categoriaCompare;
+            return (a.pacchetto || '').localeCompare(b.pacchetto || '');
+        });
+        return Array.from(new Set(accademiaOrdinata.map((a: any) => a.pacchetto).filter(Boolean)));
+    }, [accademia]);
     const handleField = useCallback((field: string, value: any) => {
         setForm((prev: Record<string, any>) => ({ ...prev, [field]: value }));
     }, []);
@@ -338,7 +381,7 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
                 <DialogContent>
                     <Stack spacing={3} sx={{ mt: 1 }}>
                         <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} />
-                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} categorie={categorie} corsi={corsi} errors={showErrors ? errors : {}} />
+                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} pacchettiOrdinati={pacchettiOrdinati} categorie={categorie} corsi={corsi} accademia={accademia} errors={showErrors ? errors : {}} />
                         <GenitoreFields form={form} handleField={handleField} />
                         <NoteFields form={form} handleField={handleField} />
                     </Stack>

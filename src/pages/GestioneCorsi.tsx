@@ -430,12 +430,15 @@ const GestioneCorsi: React.FC = () => {
       setOpenConfirmDelete(false);
       setCorsoToDelete(null);
       setAffectedSoci([]);
+      setAffectedInsegnanti([]);
     }
   }, [corsoToDelete, corsi, affectedSoci, updateSocio, removeCorso]);
 
   const handleCancelDelete = useCallback(() => {
     setOpenConfirmDelete(false);
     setCorsoToDelete(null);
+    setAffectedSoci([]);
+    setAffectedInsegnanti([]);
   }, []);
 
   const renderNomeCorsoCell = useCallback((row: Corso, col: any) => {
@@ -506,6 +509,7 @@ const GestioneCorsi: React.FC = () => {
         <DialogTitle>{editingCorso ? 'Modifica Corso' : 'Nuovo Corso'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <TextField
               autoFocus
               label="Nome Corso"
@@ -515,7 +519,6 @@ const GestioneCorsi: React.FC = () => {
               error={!!corsoErrors.nomeCorso}
               helperText={corsoErrors.nomeCorso}
             />
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <TextField
                 select
                 label="Categoria"
@@ -544,6 +547,8 @@ const GestioneCorsi: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
+              </Box>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <TextField
                 label="Prezzo Base €"
                 type="number"
@@ -687,7 +692,7 @@ const GestioneCorsi: React.FC = () => {
         title={affectedSoci.length > 0 || affectedInsegnanti.length > 0 ? 'ATTENZIONE!' : 'Conferma eliminazione'}
         message={
           affectedSoci.length > 0 || affectedInsegnanti.length > 0
-            ? 'Impossibile eliminare il corso perché associato ai seguenti soci/insegnanti:'
+            ? 'Il corso è associato ai seguenti soci/insegnanti. Se procedi verrà rimosso anche da loro:'
             : 'Sei sicuro di voler eliminare questo corso?'
         }
         items={
@@ -702,7 +707,6 @@ const GestioneCorsi: React.FC = () => {
         onCancel={handleCancelDelete}
         confirmText="Elimina"
         confirmColor="error"
-        hideConfirm={affectedSoci.length > 0 || affectedInsegnanti.length > 0}
       />
 
       <WarningDialog

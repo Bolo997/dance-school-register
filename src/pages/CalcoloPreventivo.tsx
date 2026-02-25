@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@mui/material';
-import { TextField, MenuItem, Box, Typography, IconButton, Stack, Card, CardContent, Divider, Avatar, Checkbox, FormControlLabel, InputAdornment } from '@mui/material';
+import { TextField, MenuItem, Box, Typography, IconButton, Stack, Card, CardContent, Divider, Avatar, Checkbox, FormControlLabel, InputAdornment, ToggleButtonGroup, ToggleButton, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useSupabaseData } from '../hooks/useSupabaseData';
-import { TipoIscrizione, Corso, ImportoPreventivo, Socio } from '../types';
+import { Accademia, TipoIscrizione, Corso, ImportoPreventivo, Socio } from '../types';
 import GestioneSociDialog from './GestioneSociDialog';
+import { parseListTokens } from '../utils/listTokens';
 
 const CalcoloPreventivo: React.FC = () => {
 		const { profile } = require('../contexts/AuthContext').useAuth();
@@ -23,9 +24,12 @@ const CalcoloPreventivo: React.FC = () => {
 	const { data: tipiIscrizione = [] } = useSupabaseData<TipoIscrizione>('TipoIscrizione');
 	const { data: corsi = [] } = useSupabaseData<Corso>('Corsi');
 	const { data: categorie = [] } = useSupabaseData<any>('CategorieCorsi');
+	const { data: accademia = [] } = useSupabaseData<Accademia>('Accademia');
 	const { data: soci = [], create: createSocio, update: updateSocio } = useSupabaseData<Socio>('Soci');
 	const [selectedTipo, setSelectedTipo] = useState<string>('');
+	const [toggleBaseAccademia, setToggleBaseAccademia] = useState<'base' | 'accademia'>('base');
 	const [selectedCorsoBase, setSelectedCorsoBase] = useState<string>('');
+	const [selectedAccademiaBase, setSelectedAccademiaBase] = useState<string>('');
 	const [selectedCorsoAggiuntivo, setSelectedCorsoAggiuntivo] = useState<string>('');
 	const [selectedCorsi, setSelectedCorsi] = useState<string[]>([]);
 	const [scontiCorsi, setScontiCorsi] = useState<Record<string, string>>({});
@@ -47,9 +51,64 @@ const CalcoloPreventivo: React.FC = () => {
 	}, [corsi]);
 
 	const corsoBase = useMemo(() => sortedCorsi.find(c => c.id === selectedCorsoBase), [selectedCorsoBase, sortedCorsi]);
-	// Calcolo importoBase
-	const importoBase = corsoBase ? corsoBase.prezzoBase : 0;
-	const corsiAggiunti = useMemo(() => selectedCorsi.map(id => sortedCorsi.find(c => c.id === id)).filter(Boolean) as Corso[], [selectedCorsi, sortedCorsi]);
+	const accademiaUnica = useMemo(() => {
+		const uniqueByPacchetto = new Map<string, Accademia>();
+		accademia.forEach((a) => {
+			if (!a?.pacchetto) return;
+			if (!uniqueByPacchetto.has(a.pacchetto)) uniqueByPacchetto.set(a.pacchetto, a);
+		});
+		return Array.from(uniqueByPacchetto.values()).sort((a, b) => {
+			const catComp = (a.categoria || '').localeCompare(b.categoria || '');
+			if (catComp !== 0) return catComp;
+			return (a.pacchetto || '').localeCompare(b.pacchetto || '');
+		});
+	}, [accademia]);
+	const accademiaBase = useMemo(
+		() => accademiaUnica.find((a) => a.pacchetto === selectedAccademiaBase),
+		[accademiaUnica, selectedAccademiaBase]
+	);
+	const corsiInclusiInAccademiaIds = useMemo(() => {
+		if (toggleBaseAccademia !== 'accademia') return [] as string[];
+		const corsiPacchetto = parseListTokens(accademiaBase?.corsi);
+		if (corsiPacchetto.length === 0) return [];
+		const ids = corsiPacchetto
+			.map((nome) => sortedCorsi.find((c) => c.nomeCorso === nome)?.id)
+			.filter((v): v is string => !!v);
+		return Array.from(new Set(ids));
+	}, [accademiaBase?.corsi, sortedCorsi, toggleBaseAccademia]);
+
+	const baseCourseIds = useMemo(() => {
+		if (toggleBaseAccademia === 'base') return selectedCorsoBase ? [selectedCorsoBase] : [];
+		return corsiInclusiInAccademiaIds;
+	}, [corsiInclusiInAccademiaIds, selectedCorsoBase, toggleBaseAccademia]);
+
+	// Calcolo importoBase (corso base oppure pacchetto accademia)
+	const importoBase = useMemo(() => {
+		if (toggleBaseAccademia === 'accademia') return accademiaBase ? accademiaBase.prezzo : 0;
+		return corsoBase ? corsoBase.prezzoBase : 0;
+	}, [accademiaBase, corsoBase, toggleBaseAccademia]);
+
+	const selectedCorsiEff = useMemo(() => {
+		const cleaned = selectedCorsi.filter((id) => !!id && !baseCourseIds.includes(id));
+		return Array.from(new Set(cleaned));
+	}, [baseCourseIds, selectedCorsi]);
+
+	const corsiAggiunti = useMemo(
+		() => selectedCorsiEff.map(id => sortedCorsi.find(c => c.id === id)).filter(Boolean) as Corso[],
+		[selectedCorsiEff, sortedCorsi]
+	);
+
+	useEffect(() => {
+		// Se cambia base/pacchetto, ripulisci eventuali corsi extra che ora sarebbero inclusi nella base
+		setSelectedCorsi((prev) => prev.filter((id) => !!id && !baseCourseIds.includes(id)));
+		setScontiCorsi((prev) => {
+			const next: Record<string, string> = {};
+			Object.entries(prev).forEach(([id, value]) => {
+				if (!baseCourseIds.includes(id)) next[id] = value;
+			});
+			return next;
+		});
+	}, [baseCourseIds]);
 
 	// Helper per colore categoria
 	const getCategoriaColor = (categoriaNome: string) => {
@@ -130,8 +189,10 @@ const CalcoloPreventivo: React.FC = () => {
 		setCheckedQuotaSaggio(false);
 		const socio = soci.find(s => s.id === id);
 		if (!socio) {
+			setToggleBaseAccademia('base');
 			setSelectedTipo('');
 			setSelectedCorsoBase('');
+			setSelectedAccademiaBase('');
 			setSelectedCorsi([]);
 			return;
 		}
@@ -141,9 +202,14 @@ const CalcoloPreventivo: React.FC = () => {
 		const tipoMatch = tipiIscrizione.find(t => parseFloat(String(t.value || '0')) === socioQuota);
 		setSelectedTipo(tipoMatch ? tipoMatch.id : '');
 
-		// Corso base: mappa dal nome corso al suo id
+		const socioAccademiaToken = parseListTokens(socio.accademia)[0] || '';
+		const useAccademia = !!socioAccademiaToken;
+		setToggleBaseAccademia(useAccademia ? 'accademia' : 'base');
+		setSelectedAccademiaBase(socioAccademiaToken);
+
+		// Corso base: mappa dal nome corso al suo id (solo se non è accademia)
 		const baseCourse = socio.base ? sortedCorsi.find(c => c.nomeCorso === socio.base) : undefined;
-		setSelectedCorsoBase(baseCourse ? baseCourse.id : '');
+		setSelectedCorsoBase(!useAccademia && baseCourse ? baseCourse.id : '');
 
 		// Corsi aggiuntivi: stringa separata da ; -> mappa nomi a ids
 		const courseNames = (socio.corsi || '')
@@ -156,9 +222,17 @@ const CalcoloPreventivo: React.FC = () => {
 				return course ? course.id : undefined;
 			})
 			.filter((v): v is string => !!v);
-		// Evita duplicati col corso base
-		const filteredIds = baseCourse ? ids.filter(cid => cid !== baseCourse.id) : ids;
-		setSelectedCorsi(filteredIds);
+
+		// Evita duplicati con base (corso base o corsi inclusi nel pacchetto)
+		const pacchetto = accademiaUnica.find((a) => a.pacchetto === socioAccademiaToken);
+		const pacchettoIds = parseListTokens(pacchetto?.corsi)
+			.map((nome) => sortedCorsi.find((c) => c.nomeCorso === nome)?.id)
+			.filter((v): v is string => !!v);
+		const idsDaEscludere = new Set<string>([
+			...(useAccademia ? pacchettoIds : []),
+			...(!useAccademia && baseCourse ? [baseCourse.id] : []),
+		]);
+		setSelectedCorsi(ids.filter((cid) => !idsDaEscludere.has(cid)));
 
 		// Quota saggio: abilita se presente (>0)
 		const socioQuotaSaggio = parseFloat(String(socio.quotaSaggio || '0'));
@@ -180,7 +254,11 @@ const CalcoloPreventivo: React.FC = () => {
 
 	// Actions
 	const handleAddCorso = () => {
-		if (selectedCorsoAggiuntivo && !selectedCorsi.includes(selectedCorsoAggiuntivo) && selectedCorsoAggiuntivo !== selectedCorsoBase) {
+		if (
+			selectedCorsoAggiuntivo &&
+			!selectedCorsi.includes(selectedCorsoAggiuntivo) &&
+			!baseCourseIds.includes(selectedCorsoAggiuntivo)
+		) {
 			setSelectedCorsi([...selectedCorsi, selectedCorsoAggiuntivo]);
 			setSelectedCorsoAggiuntivo('');
 		}
@@ -218,7 +296,9 @@ const CalcoloPreventivo: React.FC = () => {
 	// Pulisci tutti i valori selezionati
 	const handlePulisci = () => {
 		setSelectedTipo('');
+		setToggleBaseAccademia('base');
 		setSelectedCorsoBase('');
+		setSelectedAccademiaBase('');
 		setSelectedCorsoAggiuntivo('');
 		setSelectedCorsi([]);
 		setScontiCorsi({});
@@ -228,17 +308,15 @@ const CalcoloPreventivo: React.FC = () => {
 
 	// Apri dialog aggiungi socio con valori precompilati
 	const handleAggiungiSocio = () => {
-		const corsiNomi = selectedCorsi.map(id => {
-			const corso = sortedCorsi.find(c => c.id === id);
-			return corso ? corso.nomeCorso : id;
-		});
-		const baseNome = sortedCorsi.find(c => c.id === selectedCorsoBase)?.nomeCorso || selectedCorsoBase;
+		const corsiNomi = corsiAggiunti.map((c) => c.nomeCorso);
+		const baseNome = sortedCorsi.find(c => c.id === selectedCorsoBase)?.nomeCorso || '';
 		setFormSocio({
 			iscrizione: true,
 			dataIscrizione: new Date().toISOString().slice(0, 10),
 			quotaIscrizione: tipoValue,
 			quotaMensile: quotaMensile.toFixed(2),
-			base: baseNome,
+			base: toggleBaseAccademia === 'base' ? baseNome : '',
+			accademia: toggleBaseAccademia === 'accademia' ? selectedAccademiaBase : '',
 			corsi: corsiNomi,
 			quotaSaggio: checkedQuotaSaggio && importiPreventivo[4] ? importiPreventivo[4].valore : '',
 			cognome: '',
@@ -269,18 +347,16 @@ const CalcoloPreventivo: React.FC = () => {
 		if (!selectedSocioId) return;
 		const socio = soci.find(s => s.id === selectedSocioId);
 		if (!socio) return;
-		const corsiNomi = selectedCorsi.map(id => {
-			const corso = sortedCorsi.find(c => c.id === id);
-			return corso ? corso.nomeCorso : id;
-		});
-		const baseNome = sortedCorsi.find(c => c.id === selectedCorsoBase)?.nomeCorso || selectedCorsoBase;
+		const corsiNomi = corsiAggiunti.map((c) => c.nomeCorso);
+		const baseNome = sortedCorsi.find(c => c.id === selectedCorsoBase)?.nomeCorso || '';
 		const initialForm = {
 			// Iscrizione (from current preventivo)
 			iscrizione: true,
 			dataIscrizione: new Date().toISOString().slice(0, 10),
 			quotaIscrizione: tipoValue,
 			quotaMensile: quotaMensile.toFixed(2),
-			base: baseNome,
+			base: toggleBaseAccademia === 'base' ? baseNome : '',
+			accademia: toggleBaseAccademia === 'accademia' ? selectedAccademiaBase : '',
 			corsi: corsiNomi,
 			quotaSaggio: checkedQuotaSaggio && importiPreventivo[4] ? importiPreventivo[4].valore : '',
 			// Anagrafica (from socio)
@@ -365,43 +441,161 @@ const CalcoloPreventivo: React.FC = () => {
 								{selectedTipo ? `${tipoValue} €` : ''}
 							</Typography>
 						</Box>
-						<Box display="flex" alignItems="center" gap={2}>
-							<Typography sx={{ minWidth: 140, fontWeight: 500 }}>Corso base</Typography>
-							<TextField
-								select
-								value={selectedCorsoBase}
-								onChange={e => setSelectedCorsoBase(e.target.value)}
+						<Box display="flex" alignItems="center" gap={1}>
+							<ToggleButtonGroup
 								size="small"
-								sx={{ width: 430, bgcolor: 'white', borderRadius: 2 }}
+								exclusive
+								value={toggleBaseAccademia}
+								onChange={(_e, v) => {
+									if (!v) return;
+									setToggleBaseAccademia(v);
+									setSelectedCorsoAggiuntivo('');
+									if (v === 'base') {
+										setSelectedAccademiaBase('');
+									} else {
+										setSelectedCorsoBase('');
+									}
+								}}
+								sx={{ width: 140, bgcolor: 'white', borderRadius: 2 }}
 							>
-								{sortedCorsi.map(corso => {
-									const cat = categorie.find((c: any) => c.categoria === corso.categoria);
-									return (
-										<MenuItem key={corso.id} value={corso.id}>
-											<Box display="flex" alignItems="center" gap={1}>
-												<Box
-													component="span"
-													sx={{
-														display: 'inline-block',
-														width: 18,
-														height: 18,
-														borderRadius: '4px',
-														backgroundColor: cat?.colore || '#e3f2fd',
-														border: '1px solid #ccc',
-														mr: 1,
-														verticalAlign: 'middle'
-													}}
-												/>
-												<span style={{ fontWeight: 350 }}>{corso.nomeCorso}</span>
-												<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzoBase}€</span>
-											</Box>
-										</MenuItem>
-									);
-								})}
-							</TextField>
-							<Typography sx={{ width: 90, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
-								{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60}}>{corsoBase.prezzoBase} €</span> : ''}
-							</Typography>
+								<ToggleButton
+									value="base"
+									sx={{
+										flex: 1,
+										fontSize: '0.7rem',
+										py: 0.5,
+										px: 1,
+										textTransform: 'none',
+										'&.Mui-selected': {
+											backgroundColor: 'primary.main',
+											color: 'primary.contrastText',
+											'&:hover': { backgroundColor: 'primary.dark' },
+										},
+									}}
+								>
+									Base
+								</ToggleButton>
+								<ToggleButton
+									value="accademia"
+									sx={{
+										flex: 1,
+										fontSize: '0.7rem',
+										py: 0.5,
+										px: 1,
+										textTransform: 'none',
+										'&.Mui-selected': {
+											backgroundColor: 'primary.main',
+											color: 'primary.contrastText',
+											'&:hover': { backgroundColor: 'primary.dark' },
+										},
+									}}
+								>
+									Accademia
+								</ToggleButton>
+							</ToggleButtonGroup>
+							{toggleBaseAccademia === 'base' ? (
+								<>
+									<TextField
+										select
+										value={selectedCorsoBase}
+										onChange={e => setSelectedCorsoBase(e.target.value)}
+										size="small"
+										sx={{ width: 430, marginLeft:'9px', bgcolor: 'white', borderRadius: 2 }}
+									>
+										{sortedCorsi.map(corso => {
+											const cat = categorie.find((c: any) => c.categoria === corso.categoria);
+											return (
+												<MenuItem key={corso.id} value={corso.id}>
+													<Box display="flex" alignItems="center" gap={1}>
+														<Box
+															component="span"
+															sx={{
+																display: 'inline-block',
+																width: 18,
+																height: 18,
+																borderRadius: '4px',
+																backgroundColor: cat?.colore || '#e3f2fd',
+																border: '1px solid #ccc',
+																mr: 1,
+																verticalAlign: 'middle'
+															}}
+														/>
+														<span style={{ fontWeight: 350 }}>{corso.nomeCorso}</span>
+														<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{corso.prezzoBase}€</span>
+													</Box>
+												</MenuItem>
+											);
+										})}
+									</TextField>
+									<Typography sx={{marginLeft: 3, width: 70, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
+										{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60}}>{corsoBase.prezzoBase} €</span> : ''}
+									</Typography>
+								</>
+							) : (
+								<>
+									<TextField
+										select
+										value={selectedAccademiaBase}
+										onChange={e => setSelectedAccademiaBase(e.target.value)}
+										size="small"
+										sx={{ width: 430, marginLeft:'9px', bgcolor: 'white', borderRadius: 2 }}
+									>
+										{accademiaUnica.map((a) => {
+											const cat = categorie.find((c: any) => c.categoria === a.categoria);
+											const corsiTooltip = parseListTokens(a.corsi);
+											return (
+												<MenuItem key={a.pacchetto} value={a.pacchetto}>
+													<Tooltip
+														arrow
+														placement="right"
+														enterDelay={250}
+														title={corsiTooltip.length ? corsiTooltip.join('\n') : ''}
+														componentsProps={{
+															tooltip: {
+																sx: {
+																	whiteSpace: 'pre-line',
+																	maxWidth: 380,
+																},
+															},
+														}}
+														disableHoverListener={!corsiTooltip.length}
+													>
+														<Box
+															sx={{
+																display: 'flex',
+																alignItems: 'center',
+																gap: 1,
+																width: '100%',
+																mx: -2,
+																px: 2,
+														}}
+														>
+															<Box
+																component="span"
+																sx={{
+																	display: 'inline-block',
+																	width: 18,
+																	height: 18,
+																	borderRadius: '4px',
+																	backgroundColor: cat?.colore || '#e3f2fd',
+																	border: '1px solid #ccc',
+																	mr: 1,
+																	verticalAlign: 'middle'
+																}}
+															/>
+															<span style={{ fontWeight: 350 }}>{a.pacchetto}</span>
+															<span style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>{a.prezzo}€</span>
+														</Box>
+													</Tooltip>
+												</MenuItem>
+											);
+										})}
+									</TextField>
+									<Typography sx={{marginLeft: 3, width: 70, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
+										{accademiaBase ? <span style={{ display: 'inline-block', minWidth: 60}}>{accademiaBase.prezzo} €</span> : ''}
+									</Typography>
+								</>
+							)}
 						</Box>
 						<Box display="flex" alignItems="center" gap={2}>
 							<Typography sx={{ minWidth: 140, fontWeight: 500 }}>Aggiungi corso</Typography>
@@ -413,7 +607,7 @@ const CalcoloPreventivo: React.FC = () => {
 								sx={{ width: 430, bgcolor: 'white', borderRadius: 2 }}
 							>
 								{sortedCorsi
-									.filter(corso => corso.id !== selectedCorsoBase && !selectedCorsi.includes(corso.id))
+									.filter(corso => !baseCourseIds.includes(corso.id) && !selectedCorsiEff.includes(corso.id))
 									.map(corso => {
 										const cat = categorie.find((c: any) => c.categoria === corso.categoria);
 										return (
