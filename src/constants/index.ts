@@ -11,11 +11,6 @@ export const SUCCESS_MESSAGES = {
   UPDATED: 'Aggiornato con successo',
 };
 
-export const VALIDATION_PATTERNS = {
-  EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  PHONE: /^[0-9]{6,20}$/,
-};
-
 export const TIME_SLOT_CONFIG = {
   START_HOUR: 7,
   END_HOUR: 23,

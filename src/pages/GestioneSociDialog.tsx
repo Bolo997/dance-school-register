@@ -12,12 +12,14 @@ import {
     Chip,
     Box,
     Typography,
-    CircularProgress
+    CircularProgress,
+    InputAdornment,
+    IconButton
 } from '@mui/material';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFormValidation } from '../hooks/useFormValidation';
 import SuccessDialog from '../components/SuccessDialog';
-import { VALIDATION_PATTERNS } from '../constants';
 import { logOperation } from '../utils/logs';
 
 // Converte una data da formato dd/mm/yyyy a yyyy-MM-dd per gli input type="date"
@@ -53,7 +55,31 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
                 <TextField label="Cod. Fiscale" sx={{ flex: 1 }} value={form.codFiscale || ''} onChange={e => handleField('codFiscale', e.target.value)} error={!!errors.codFiscale} helperText={errors.codFiscale} />
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField label="Data Nascita" type="date" sx={{ flex: 1 }} value={form.dataNascita || ''} onChange={e => handleField('dataNascita', e.target.value)} InputLabelProps={{ shrink: true }} error={!!errors.dataNascita} helperText={errors.dataNascita} />
+                <TextField
+                    label="Data Nascita"
+                    type="date"
+                    sx={{ flex: 1 }}
+                    value={form.dataNascita ?? ''}
+                    onChange={e => handleField('dataNascita', e.target.value)}
+                    autoComplete="off"
+                    InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="Svuota data"
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleField('dataNascita', '')}
+                                >
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            </InputAdornment>
+                        )
+                    }}
+                    error={!!errors.dataNascita}
+                    helperText={errors.dataNascita}
+                />
                 <TextField label="Luogo di Nascita" sx={{ flex: 1 }} value={form.luogoNascita || ''} onChange={e => handleField('luogoNascita', e.target.value)} error={!!errors.luogoNascita} helperText={errors.luogoNascita} />
                 <TextField label="Prov. di Nascita" sx={{ flex: 1 }} value={form.provinciaNascita || ''} onChange={e => handleField('provinciaNascita', e.target.value)} inputProps={{ maxLength: 2 }} error={!!errors.provinciaNascita} helperText={errors.provinciaNascita} />
             </Box>
@@ -85,9 +111,24 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     label="Data Iscrizione"
                     type="date"
                     sx={{ flex: 1 }}
-                    value={form.dataIscrizione || ''}
+                    value={form.dataIscrizione ?? ''}
                     onChange={e => handleField('dataIscrizione', e.target.value)}
+                    autoComplete="off"
                     InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="Svuota data"
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleField('dataIscrizione', '')}
+                                >
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            </InputAdornment>
+                        )
+                    }}
                     error={!!errors.dataIscrizione}
                     helperText={errors.dataIscrizione}
                 />
@@ -95,9 +136,24 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     label="Scadenza Tessera"
                     type="date"
                     sx={{ flex: 1 }}
-                    value={form.scadenzaTessera || ''}
+                    value={form.scadenzaTessera ?? ''}
                     onChange={e => handleField('scadenzaTessera', e.target.value)}
+                    autoComplete="off"
                     InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="Svuota data"
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleField('scadenzaTessera', '')}
+                                >
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            </InputAdornment>
+                        )
+                    }}
                     error={!!errors.scadenzaTessera}
                     helperText={errors.scadenzaTessera}
                 />
@@ -105,9 +161,24 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     label="Scadenza Certificato"
                     type="date"
                     sx={{ flex: 1 }}
-                    value={form.scadenzaCertificato || ''}
+                    value={form.scadenzaCertificato ?? ''}
                     onChange={e => handleField('scadenzaCertificato', e.target.value)}
+                    autoComplete="off"
                     InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="Svuota data"
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleField('scadenzaCertificato', '')}
+                                >
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            </InputAdornment>
+                        )
+                    }}
                     error={!!errors.scadenzaCertificato}
                     helperText={errors.scadenzaCertificato}
                 />
@@ -305,22 +376,6 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
         indirizzo: { required: true, message: 'L’indirizzo di residenza è obbligatorio' },
         residenza: { required: true, message: 'La città di residenza è obbligatoria' },
         provinciaResidenza: { required: true, message: 'La provincia di residenza è obbligatoria' },
-        telefono: {
-            required: true,
-            message: 'Inserisci un numero di telefono valido (solo cifre)',
-            customValidation: (value: string) => {
-                if (!value) return false;
-                return VALIDATION_PATTERNS.PHONE.test(value.trim());
-            }
-        },
-        email: {
-            required: true,
-            message: 'Inserisci un indirizzo email valido',
-            customValidation: (value: string) => {
-                if (!value) return false;
-                return VALIDATION_PATTERNS.EMAIL.test(value.trim());
-            }
-        },
     };
 
     const handleSave = useCallback(async () => {
