@@ -219,7 +219,7 @@ const Soci: React.FC = () => {
       importoFinale = (qm * moltiplicatore) - ((qm * 9) / 100 * 15);
     } else if (meseSelezionato.indexOf('Trimestre') !== -1) {
       moltiplicatore = 3;
-      importoFinale = (qm * moltiplicatore) - ((qm * 3) / 100 * 15);
+      importoFinale = (qm * moltiplicatore) - ((qm * 3) / 100 * 10);
     } else if (meseSelezionato === 'Vari') {
       setImportoPagamento('');
       return;
