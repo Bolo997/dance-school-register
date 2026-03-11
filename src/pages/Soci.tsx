@@ -487,12 +487,14 @@ const Soci: React.FC = () => {
         title="Fatture"
         columns={fattureColumns}
         data={fattureConSoci}
+        getRowId={(row) => String(row.idSocio)}
         onEdit={handleOpenDialog}
         emptyMessage="Nessun socio presente"
         renderCell={renderCell}
         getCellSx={getCellSx}
         actionColumnWidth={56}
         getHeadCellSx={getHeadCellSx}
+        stringSortLocale="it"
       />
 
       <SuccessDialog

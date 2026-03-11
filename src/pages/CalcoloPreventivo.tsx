@@ -25,7 +25,7 @@ const CalcoloPreventivo: React.FC = () => {
 	const { data: corsi = [] } = useSupabaseData<Corso>('Corsi');
 	const { data: categorie = [] } = useSupabaseData<any>('CategorieCorsi');
 	const { data: accademia = [] } = useSupabaseData<Accademia>('Accademia');
-	const { data: soci = [], create: createSocio, update: updateSocio } = useSupabaseData<Socio>('Soci');
+	const { data: soci = [], create: createSocio, update: updateSocio } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
 	const [selectedTipo, setSelectedTipo] = useState<string>('');
 	const [toggleBaseAccademia, setToggleBaseAccademia] = useState<'base' | 'accademia'>('base');
 	const [selectedCorsoBase, setSelectedCorsoBase] = useState<string>('');

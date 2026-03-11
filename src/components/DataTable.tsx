@@ -36,6 +36,16 @@ interface DataTableProps {
   getCellSx?: (row: any, column: Column) => any;
   getHeadCellSx?: (column: Column) => any;
   actionColumnWidth?: number;
+  /**
+   * Provide a stable unique id for each row (used as React key).
+   * Useful when the dataset merges entities and `row.id` may collide.
+   */
+  getRowId?: (row: any) => string;
+  /**
+   * When set, string comparisons will use locale-aware ordering (localeCompare).
+   * Useful for proper alphabetical sort with accents (e.g., Italian names).
+   */
+  stringSortLocale?: string;
 }
 
 type Order = 'asc' | 'desc';
@@ -91,7 +101,9 @@ const DataTable = React.memo<DataTableProps>(({
   renderCell,
   getCellSx,
   getHeadCellSx,
-  actionColumnWidth
+  actionColumnWidth,
+  getRowId,
+  stringSortLocale
 }) => {
   const actionW = actionColumnWidth ?? 100;
   const { profile } = require('../contexts/AuthContext').useAuth();
@@ -133,13 +145,23 @@ const DataTable = React.memo<DataTableProps>(({
         if (bValue == null) return -1;
         const av = normalizeForSort(aValue);
         const bv = normalizeForSort(bValue);
-        const comparison = av < bv ? -1 : av > bv ? 1 : 0;
-        return order === 'asc' ? comparison : -comparison;
+
+        let comparison = 0;
+        if (typeof av === 'number' && typeof bv === 'number') {
+          comparison = av - bv;
+        } else if (typeof av === 'string' && typeof bv === 'string' && stringSortLocale) {
+          comparison = av.localeCompare(bv, stringSortLocale, { sensitivity: 'base', numeric: true });
+        } else {
+          comparison = av < bv ? -1 : av > bv ? 1 : 0;
+        }
+
+        const normalizedComparison = comparison < 0 ? -1 : comparison > 0 ? 1 : 0;
+        return order === 'asc' ? normalizedComparison : -normalizedComparison;
       });
     }
 
     return result;
-  }, [data, filters, orderBy, order]);
+  }, [data, filters, orderBy, order, stringSortLocale]);
 
   // Funzione per generare il tooltip delle azioni
   const getTooltipTitle = (item: any) => (
@@ -193,13 +215,13 @@ const DataTable = React.memo<DataTableProps>(({
   };
 
   // Funzione per generare le celle
-  const renderCells = (item: any) => (
+  const renderCells = (item: any, rowId: string) => (
     columns.map((col, i) => {
       const customContent = renderCell ? renderCell(item, col) : undefined;
       const extraSx = getCellSx ? getCellSx(item, col) : undefined;
       return (
         <TableCell
-          key={`cell-${item.id}-${i}-${col.key}`}
+          key={`cell-${rowId}-${i}-${col.key}`}
           align={col.align ?? 'left'}
           sx={{ 
           py: 0.10, 
@@ -216,6 +238,13 @@ const DataTable = React.memo<DataTableProps>(({
       );
     })
   );
+
+  const getSafeRowId = useCallback((item: any): string => {
+    const computed = getRowId?.(item);
+    if (computed !== undefined && computed !== null && String(computed).trim() !== '') return String(computed);
+    if (item?.id !== undefined && item?.id !== null) return String(item.id);
+    return JSON.stringify(item);
+  }, [getRowId]);
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
@@ -288,11 +317,11 @@ const DataTable = React.memo<DataTableProps>(({
           </TableHead>
           <TableBody>
             {filteredAndSortedData.map((item) => (
-              <TableRow key={item.id} sx={{ height: '32px' }}>
+              <TableRow key={getSafeRowId(item)} sx={{ height: '32px' }}>
                 <TableCell sx={{ py: 0.25, whiteSpace: 'nowrap', width: `${actionW}px`, maxWidth: `${actionW}px`, minWidth: `${actionW}px`, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}>
                   {renderActions(item)}
                 </TableCell>
-                {renderCells(item)}
+                {renderCells(item, getSafeRowId(item))}
               </TableRow>
             ))}
             {filteredAndSortedData.length === 0 && (
