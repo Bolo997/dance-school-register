@@ -387,7 +387,7 @@ const CalcoloPreventivo: React.FC = () => {
 		const initialForm = {
 			// Iscrizione (from current preventivo)
 			iscrizione: true,
-			dataIscrizione: new Date().toISOString().slice(0, 10),
+			dataIscrizione: socio.dataIscrizione || '',
 			quotaIscrizione: tipoValue,
 			quotaMensile: importoFinaleCorsi.toFixed(2),
 			base: toggleBaseAccademia === 'base' ? baseNome : '',
