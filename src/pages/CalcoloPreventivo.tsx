@@ -734,10 +734,10 @@ const CalcoloPreventivo: React.FC = () => {
 
 															<Box sx={{ minWidth: 90, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1 }}>
 																<Typography sx={{ fontWeight: 500, textAlign: 'right', color: '#888', textDecoration: 'line-through' }}>
-																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{corso.prezzoAggiuntivo.toFixed(2)} €</span>
+																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{corso.prezzoAggiuntivo?.toFixed(2) || 0} €</span>
 																</Typography>
 																<Typography sx={{ fontWeight: 700, textAlign: 'right', color: '#1976d2' }}>
-																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{(corso.prezzoAggiuntivo * (1 - getScontoPercent(corso.id) / 100)).toFixed(2)} €</span>
+																	<span style={{ display: 'inline-block', textAlign: 'right' }}>{((corso.prezzoAggiuntivo || 0) * (1 - getScontoPercent(corso.id) / 100)).toFixed(2)} €</span>
 																</Typography>
 															</Box>
 														</Box>
