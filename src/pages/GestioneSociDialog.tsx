@@ -25,27 +25,47 @@ import { logOperation } from '../utils/logs';
 // Converte una data da formato dd/mm/yyyy a yyyy-MM-dd per gli input type="date"
 const normalizeDateForInput = (value?: string) => {
     if (!value) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
-    if (match) {
-        const [, dd, mm, yyyy] = match;
-        return `${yyyy}-${mm}-${dd}`;
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    // yyyy-MM-dd
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // ISO datetime: yyyy-MM-ddTHH:mm:ss... -> yyyy-MM-dd
+    const isoDateTimeMatch = /^(\d{4}-\d{2}-\d{2})T/.exec(trimmed);
+    if (isoDateTimeMatch) return isoDateTimeMatch[1];
+
+    // dd/mm/yyyy
+    const italianMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+    if (italianMatch) {
+        const [, dd, mm, yyyy] = italianMatch;
+        return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
     }
-    return value;
+
+    // Qualsiasi altro formato può risultare "non valido" per i browser (Safari incluso)
+    return '';
 };
 
 // Converte una data da formato yyyy-MM-dd a dd/mm/yyyy per il salvataggio su Supabase
 const formatDateForSave = (value?: string) => {
     if (!value) return '';
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        const [yyyy, mm, dd] = value.split('-');
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+
+    const isoDateTimeMatch = /^(\d{4}-\d{2}-\d{2})T/.exec(trimmed);
+    const dateOnly = isoDateTimeMatch ? isoDateTimeMatch[1] : trimmed;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+        const [yyyy, mm, dd] = dateOnly.split('-');
         return `${dd}/${mm}/${yyyy}`;
     }
-    return value;
+
+    return '';
 };
 
-const AnagraficaFields = ({ form, handleField, errors }: any) => (
+const AnagraficaFields = ({ form, handleField, errors, dateInputKeys, clearDateField }: any) => (
     <>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main', mt: 1, pb: 1, borderBottom: 2, borderColor: 'primary.main' }}>Anagrafica</Typography>
         <Stack spacing={2}>
@@ -56,6 +76,7 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
+                    key={`dataNascita-${dateInputKeys?.dataNascita ?? 0}`}
                     label="Data Nascita"
                     type="date"
                     sx={{ flex: 1 }}
@@ -64,13 +85,13 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
                     autoComplete="off"
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
-                        endAdornment: (
-                            <InputAdornment position="end">
+                        startAdornment: (
+                            <InputAdornment position="start">
                                 <IconButton
                                     aria-label="Svuota data"
-                                    edge="end"
+                                    edge="start"
                                     size="small"
-                                    onClick={() => handleField('dataNascita', '')}
+                                    onClick={() => (clearDateField ? clearDateField('dataNascita') : handleField('dataNascita', ''))}
                                 >
                                     <ClearIcon fontSize="small" />
                                 </IconButton>
@@ -96,7 +117,7 @@ const AnagraficaFields = ({ form, handleField, errors }: any) => (
     </>
 );
 
-const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchettiOrdinati = [], categorie = [], corsi = [], accademia = [], errors = {} }: any) => (
+const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchettiOrdinati = [], categorie = [], corsi = [], accademia = [], errors = {}, dateInputKeys, clearDateField }: any) => (
     <>
         <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main', mt: 2, pb: 1, borderBottom: 2, borderColor: 'primary.main' }}>Iscrizione</Typography>
         <Stack spacing={2}>
@@ -108,6 +129,7 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
+                    key={`dataIscrizione-${dateInputKeys?.dataIscrizione ?? 0}`}
                     label="Data Iscrizione"
                     type="date"
                     sx={{ flex: 1 }}
@@ -116,13 +138,13 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     autoComplete="off"
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
-                        endAdornment: (
-                            <InputAdornment position="end">
+                        startAdornment: (
+                            <InputAdornment position="start">
                                 <IconButton
                                     aria-label="Svuota data"
-                                    edge="end"
+                                    edge="start"
                                     size="small"
-                                    onClick={() => handleField('dataIscrizione', '')}
+                                    onClick={() => (clearDateField ? clearDateField('dataIscrizione') : handleField('dataIscrizione', ''))}
                                 >
                                     <ClearIcon fontSize="small" />
                                 </IconButton>
@@ -133,6 +155,7 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     helperText={errors.dataIscrizione}
                 />
                 <TextField
+                    key={`scadenzaTessera-${dateInputKeys?.scadenzaTessera ?? 0}`}
                     label="Scadenza Tessera"
                     type="date"
                     sx={{ flex: 1 }}
@@ -141,13 +164,13 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     autoComplete="off"
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
-                        endAdornment: (
-                            <InputAdornment position="end">
+                        startAdornment: (
+                            <InputAdornment position="start">
                                 <IconButton
                                     aria-label="Svuota data"
-                                    edge="end"
+                                    edge="start"
                                     size="small"
-                                    onClick={() => handleField('scadenzaTessera', '')}
+                                    onClick={() => (clearDateField ? clearDateField('scadenzaTessera') : handleField('scadenzaTessera', ''))}
                                 >
                                     <ClearIcon fontSize="small" />
                                 </IconButton>
@@ -158,6 +181,7 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     helperText={errors.scadenzaTessera}
                 />
                 <TextField
+                    key={`scadenzaCertificato-${dateInputKeys?.scadenzaCertificato ?? 0}`}
                     label="Scadenza Certificato"
                     type="date"
                     sx={{ flex: 1 }}
@@ -166,13 +190,13 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     autoComplete="off"
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
-                        endAdornment: (
-                            <InputAdornment position="end">
+                        startAdornment: (
+                            <InputAdornment position="start">
                                 <IconButton
                                     aria-label="Svuota data"
-                                    edge="end"
+                                    edge="start"
                                     size="small"
-                                    onClick={() => handleField('scadenzaCertificato', '')}
+                                    onClick={() => (clearDateField ? clearDateField('scadenzaCertificato') : handleField('scadenzaCertificato', ''))}
                                 >
                                     <ClearIcon fontSize="small" />
                                 </IconButton>
@@ -309,6 +333,12 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
     const { profile } = require('../contexts/AuthContext').useAuth();
     const userName = profile?.userName || 'unknown';
     const [form, setForm] = useState<any>(initialForm || {});
+    const [dateInputKeys, setDateInputKeys] = useState<Record<string, number>>({
+        dataNascita: 0,
+        dataIscrizione: 0,
+        scadenzaTessera: 0,
+        scadenzaCertificato: 0,
+    });
     const { data: corsi } = require('../hooks/useSupabaseData').useSupabaseData('Corsi');
     const { data: categorie } = require('../hooks/useSupabaseData').useSupabaseData('CategorieCorsi');
     const { data: accademia } = require('../hooks/useSupabaseData').useSupabaseData('Accademia');
@@ -354,6 +384,11 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
     }, [accademia]);
     const handleField = useCallback((field: string, value: any) => {
         setForm((prev: Record<string, any>) => ({ ...prev, [field]: value }));
+    }, []);
+
+    const clearDateField = useCallback((field: string) => {
+        setForm((prev: Record<string, any>) => ({ ...prev, [field]: '' }));
+        setDateInputKeys((prev) => ({ ...prev, [field]: (prev[field] ?? 0) + 1 }));
     }, []);
 
 
@@ -435,8 +470,8 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
                 <DialogTitle>Nuovo Socio</DialogTitle>
                 <DialogContent>
                     <Stack spacing={3} sx={{ mt: 1 }}>
-                        <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} />
-                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} pacchettiOrdinati={pacchettiOrdinati} categorie={categorie} corsi={corsi} accademia={accademia} errors={showErrors ? errors : {}} />
+                        <AnagraficaFields form={form} handleField={handleField} errors={showErrors ? errors : {}} dateInputKeys={dateInputKeys} clearDateField={clearDateField} />
+                        <IscrizioneFields form={form} handleField={handleField} nomiCorsiOrdinati={nomiCorsiOrdinati} pacchettiOrdinati={pacchettiOrdinati} categorie={categorie} corsi={corsi} accademia={accademia} errors={showErrors ? errors : {}} dateInputKeys={dateInputKeys} clearDateField={clearDateField} />
                         <GenitoreFields form={form} handleField={handleField} />
                         <NoteFields form={form} handleField={handleField} />
                     </Stack>
