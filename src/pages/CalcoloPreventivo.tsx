@@ -29,6 +29,7 @@ const CalcoloPreventivo: React.FC = () => {
 	const [selectedTipo, setSelectedTipo] = useState<string>('');
 	const [toggleBaseAccademia, setToggleBaseAccademia] = useState<'base' | 'accademia'>('base');
 	const [selectedCorsoBase, setSelectedCorsoBase] = useState<string>('');
+	const [scontoCorsoBase, setScontoCorsoBase] = useState<string>('');
 	const [selectedAccademiaBase, setSelectedAccademiaBase] = useState<string>('');
 	const [selectedCorsoAggiuntivo, setSelectedCorsoAggiuntivo] = useState<string>('');
 	const [selectedCorsi, setSelectedCorsi] = useState<string[]>([]);
@@ -85,8 +86,11 @@ const CalcoloPreventivo: React.FC = () => {
 	// Calcolo importoBase (corso base oppure pacchetto accademia)
 	const importoBase = useMemo(() => {
 		if (toggleBaseAccademia === 'accademia') return accademiaBase ? accademiaBase.prezzo : 0;
-		return corsoBase ? corsoBase.prezzoBase : 0;
-	}, [accademiaBase, corsoBase, toggleBaseAccademia]);
+		const prezzo = corsoBase ? corsoBase.prezzoBase : 0;
+		const parsed = scontoCorsoBase === '' ? 0 : Number(scontoCorsoBase);
+		const percent = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+		return prezzo * (1 - percent / 100);
+	}, [accademiaBase, corsoBase, scontoCorsoBase, toggleBaseAccademia]);
 
 	const selectedCorsiEff = useMemo(() => {
 		const cleaned = selectedCorsi.filter((id) => !!id && !baseCourseIds.includes(id));
@@ -109,6 +113,16 @@ const CalcoloPreventivo: React.FC = () => {
 			return next;
 		});
 	}, [baseCourseIds]);
+
+	useEffect(() => {
+		// Evita di riusare lo stesso sconto su corsi base diversi
+		setScontoCorsoBase('');
+	}, [selectedCorsoBase]);
+
+	useEffect(() => {
+		// Lo sconto base ha senso solo in modalità "Base"
+		if (toggleBaseAccademia !== 'base') setScontoCorsoBase('');
+	}, [toggleBaseAccademia]);
 
 	// Helper per colore categoria
 	const getCategoriaColor = (categoriaNome: string) => {
@@ -185,6 +199,7 @@ const CalcoloPreventivo: React.FC = () => {
 	const handleSelectSocio = (id: string) => {
 		setSelectedSocioId(id);
 		setScontiCorsi({});
+		setScontoCorsoBase('');
 		setCheckedExtras([false, false, false, false]);
 		setCheckedQuotaSaggio(false);
 		const socio = soci.find(s => s.id === id);
@@ -192,6 +207,7 @@ const CalcoloPreventivo: React.FC = () => {
 			setToggleBaseAccademia('base');
 			setSelectedTipo('');
 			setSelectedCorsoBase('');
+			setScontoCorsoBase('');
 			setSelectedAccademiaBase('');
 			setSelectedCorsi([]);
 			return;
@@ -283,6 +299,24 @@ const CalcoloPreventivo: React.FC = () => {
 		setScontiCorsi(prev => ({ ...prev, [corsoId]: String(clamped) }));
 	};
 
+	const getScontoPercentBase = () => {
+		if (scontoCorsoBase === '') return 0;
+		const n = Number(scontoCorsoBase);
+		if (!Number.isFinite(n)) return 0;
+		return Math.min(100, Math.max(0, n));
+	};
+
+	const handleChangeScontoBase = (value: string) => {
+		if (value === '') {
+			setScontoCorsoBase('');
+			return;
+		}
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return;
+		const clamped = Math.min(100, Math.max(0, parsed));
+		setScontoCorsoBase(String(clamped));
+	};
+
 	const handleRemoveCorso = (id: string) => {
 		setSelectedCorsi(selectedCorsi.filter(cId => cId !== id));
 		setScontiCorsi(prev => {
@@ -298,6 +332,7 @@ const CalcoloPreventivo: React.FC = () => {
 		setSelectedTipo('');
 		setToggleBaseAccademia('base');
 		setSelectedCorsoBase('');
+		setScontoCorsoBase('');
 		setSelectedAccademiaBase('');
 		setSelectedCorsoAggiuntivo('');
 		setSelectedCorsi([]);
@@ -450,6 +485,7 @@ const CalcoloPreventivo: React.FC = () => {
 									if (!v) return;
 									setToggleBaseAccademia(v);
 									setSelectedCorsoAggiuntivo('');
+									setScontoCorsoBase('');
 									if (v === 'base') {
 										setSelectedAccademiaBase('');
 									} else {
@@ -498,9 +534,12 @@ const CalcoloPreventivo: React.FC = () => {
 									<TextField
 										select
 										value={selectedCorsoBase}
-										onChange={e => setSelectedCorsoBase(e.target.value)}
+										onChange={e => {
+											setSelectedCorsoBase(e.target.value);
+											setScontoCorsoBase('');
+										}}
 										size="small"
-										sx={{ width: 430, marginLeft:'9px', bgcolor: 'white', borderRadius: 2 }}
+										sx={{ width: 330, marginLeft:'9px', bgcolor: 'white', borderRadius: 2 }}
 									>
 										{sortedCorsi.map(corso => {
 											const cat = categorie.find((c: any) => c.categoria === corso.categoria);
@@ -527,9 +566,28 @@ const CalcoloPreventivo: React.FC = () => {
 											);
 										})}
 									</TextField>
-									<Typography sx={{marginLeft: 3, width: 70, textAlign: 'right', fontWeight: 500, color: '#1976d2' }}>
-										{corsoBase ? <span style={{ display: 'inline-block', minWidth: 60}}>{corsoBase.prezzoBase} €</span> : ''}
-									</Typography>
+									<TextField
+										type="number"
+										size="small"
+										value={scontoCorsoBase}
+										onChange={e => handleChangeScontoBase(e.target.value)}
+										disabled={!selectedCorsoBase}
+										sx={{ width: 90, bgcolor: 'white', borderRadius: 2 }}
+										inputProps={{ min: 0, max: 100, step: 1 }}
+										InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+									/>
+									<Box sx={{ minWidth: 90, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1 }}>
+										{corsoBase ? (
+											<>
+												<Typography sx={{ fontWeight: 500, textAlign: 'right', color: '#888', textDecoration: 'line-through' }}>
+													<span style={{ display: 'inline-block', textAlign: 'right' }}>{corsoBase.prezzoBase.toFixed(2)} €</span>
+												</Typography>
+												<Typography sx={{ fontWeight: 700, textAlign: 'right', color: '#1976d2' }}>
+													<span style={{ display: 'inline-block', textAlign: 'right' }}>{arrotonda5(corsoBase.prezzoBase * (1 - getScontoPercentBase() / 100)).toFixed(2)} €</span>
+												</Typography>
+											</>
+										) : null}
+									</Box>
 								</>
 							) : (
 								<>

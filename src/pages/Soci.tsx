@@ -36,6 +36,27 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { formatEuro, formatDate } from '../utils/formatters';
 
+const MESI_DISPONIBILI = [
+  'Settembre',
+  'Ottobre',
+  'Novembre',
+  'Dicembre',
+  'Gennaio',
+  'Febbraio',
+  'Marzo',
+  'Aprile',
+  'Maggio',
+  'Giugno',
+  '1° Trimestre',
+  '2° Trimestre',
+  '3° Trimestre',
+  'Annuale',
+  'Vari',
+] as const;
+
+// Stesso criterio del Calcolo Preventivo: arrotonda a multipli di 5€
+const arrotonda5 = (val: number) => Math.round(val / 5) * 5;
+
 const Soci: React.FC = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
@@ -63,11 +84,7 @@ const Soci: React.FC = () => {
   const [notePagamento, setNotePagamento] = useState('');
   const [pagamentiMensili, setPagamentiMensili] = useState<{mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean, note?: string}[]>([]);
 
-  const mesiDisponibili = ['Settembre', 'Ottobre', 'Novembre', 'Dicembre', 
-    'Gennaio', 'Febbraio', 'Marzo', 
-    'Aprile', 'Maggio', 'Giugno',
-    '1° Trimestre','2° Trimestre','3° Trimestre', 'Annuale', 'Vari'
-  ];
+  const mesiDisponibili = MESI_DISPONIBILI;
 
   // Combina i dati dei soci con le fatture
   const fattureConSoci = useMemo(() => {
@@ -147,6 +164,22 @@ const Soci: React.FC = () => {
     });
   }, [soci]);
 
+  const socioOptions = useMemo(() => {
+    return sociOrdinati.map((socio) => (
+      <MenuItem key={socio.id} value={socio.id}>
+        {socio.cognome} {socio.nome}
+      </MenuItem>
+    ));
+  }, [sociOrdinati]);
+
+  const mesiOptions = useMemo(() => {
+    return mesiDisponibili.map((mese) => (
+      <MenuItem key={mese} value={mese}>
+        {mese}
+      </MenuItem>
+    ));
+  }, [mesiDisponibili]);
+
   const parsePagamenti = useCallback((pagamentiString: string) => {
     if (!pagamentiString) {
       setPagamentiMensili([]);
@@ -183,7 +216,6 @@ const Soci: React.FC = () => {
         idSocio: row.idSocio,
         pagamenti: row.pagamenti,
       });
-      calcolaImporto(row.quotaMensile, row.quotaSaggio);
       parsePagamenti(row.pagamenti || '');
     } else {
       setEditingFattura(null);
@@ -229,7 +261,8 @@ const Soci: React.FC = () => {
     if (quotaSaggioFlag) {
       importoFinale = importoFinale + (qs * moltiplicatore);
     }
-    setImportoPagamento(importoFinale > 0 ? importoFinale.toString() : '');
+    const rounded = importoFinale > 0 ? arrotonda5(importoFinale) : 0;
+    setImportoPagamento(rounded > 0 ? rounded.toFixed(2) : '');
   }, [meseSelezionato, quotaSaggioFlag]);
 
   const handleSocioSelect = useCallback((socioId: string) => {
@@ -318,11 +351,80 @@ const Soci: React.FC = () => {
     setQuotaSaggioFlag(false);
     setNotePagamento('');
     setPaymentAttempted(false);
-  }, [meseSelezionato, importoPagamento, metodoPagamento, quotaSaggioFlag, pagamentiMensili, notePagamento]);
+  }, [meseSelezionato, importoPagamento, metodoPagamento, quotaSaggioFlag, notePagamento]);
 
   const handleRimuoviPagamento = useCallback((index: number) => {
     setPagamentiMensili(prev => prev.filter((_, i) => i !== index));
   }, []);
+
+  const pagamentiRegistratiContent = useMemo(() => {
+    if (pagamentiMensili.length === 0) return null;
+    return (
+      <>
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Pagamenti registrati ({pagamentiMensili.length})
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+          {pagamentiMensili.map((pag, index) => (
+            <Card
+              key={`${pag.mese}-${pag.data || ''}-${index}`}
+              variant="outlined"
+              sx={{
+                bgcolor: 'primary.50',
+                borderColor: 'primary.main',
+                position: 'relative',
+                '&:hover': {
+                  bgcolor: 'primary.100',
+                  boxShadow: 1,
+                },
+              }}
+            >
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {pag.mese}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600 }}>
+                        €{pag.importo.toFixed(2)}
+                      </Typography>
+                      {!!pag.note?.trim() && (
+                        <Tooltip title={pag.note} arrow>
+                          <Box sx={{ display: 'inline-flex', alignItems: 'center', color: 'text.secondary' }}>
+                            <VisibilityIcon fontSize="small" />
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </Box>
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Data: {pag.data || '-'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Metodo: {pag.metodo || '-'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Quota Saggio: {pag.quotaSaggio ? 'Sì' : 'No'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleRimuoviPagamento(index)}
+                    sx={{ color: 'error.main' }}
+                  >
+                    ×
+                  </IconButton>
+                </Box>
+              </CardContent>
+            </Card>
+          ))}
+        </Box>
+      </>
+    );
+  }, [pagamentiMensili, handleRimuoviPagamento]);
 
   const handleChange = useCallback((field: keyof Fattura, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -456,6 +558,8 @@ const Soci: React.FC = () => {
     return undefined;
   }, [stickyOffsets]);
 
+  const getFattureRowId = useCallback((row: any) => String(row.idSocio), []);
+
   return (
     <Container maxWidth="xl" sx={{ mt: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
@@ -487,7 +591,7 @@ const Soci: React.FC = () => {
         title="Fatture"
         columns={fattureColumns}
         data={fattureConSoci}
-        getRowId={(row) => String(row.idSocio)}
+        getRowId={getFattureRowId}
         onEdit={handleOpenDialog}
         emptyMessage="Nessun socio presente"
         renderCell={renderCell}
@@ -515,11 +619,7 @@ const Soci: React.FC = () => {
               error={!!errors.idSocio}
               helperText={errors.idSocio}
             >
-              {sociOrdinati.map((socio) => (
-                <MenuItem key={socio.id} value={socio.id}>
-                  {socio.cognome} {socio.nome}
-                </MenuItem>
-              ))}
+              {socioOptions}
             </TextField>
 
             <Box>
@@ -548,11 +648,7 @@ const Soci: React.FC = () => {
                       error={paymentAttempted && !meseSelezionato}
                       helperText={paymentAttempted && !meseSelezionato ? 'Campo obbligatorio' : ''}
                     >
-                      {mesiDisponibili.map((mese) => (
-                        <MenuItem key={mese} value={mese}>
-                          {mese}
-                        </MenuItem>
-                      ))}
+                      {mesiOptions}
                     </TextField>
                     {meseSelezionato !== 'Vari' && meseSelezionato !== 'Varie' && (
                       <FormControlLabel
@@ -618,71 +714,7 @@ const Soci: React.FC = () => {
                 </CardContent>
               </Card>
               
-              {pagamentiMensili.length > 0 && (
-                <>
-                  <Divider sx={{ my: 2 }} />
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                    Pagamenti registrati ({pagamentiMensili.length})
-                  </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                    {pagamentiMensili.map((pag, index) => (
-                      <Card 
-                        key={`${pag.mese}-${pag.data || ''}-${index}`}
-                        variant="outlined" 
-                        sx={{ 
-                          bgcolor: 'primary.50',
-                          borderColor: 'primary.main',
-                          position: 'relative',
-                          '&:hover': {
-                            bgcolor: 'primary.100',
-                            boxShadow: 1
-                          }
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                {pag.mese}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600 }}>
-                                  €{pag.importo.toFixed(2)}
-                                </Typography>
-                                {!!pag.note?.trim() && (
-                                  <Tooltip title={pag.note} arrow>
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', color: 'text.secondary' }}>
-                                      <VisibilityIcon fontSize="small" />
-                                    </Box>
-                                  </Tooltip>
-                                )}
-                              </Box>
-                              <Box sx={{ mt: 0.5 }}>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  Data: {pag.data || '-'}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  Metodo: {pag.metodo || '-'}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  Quota Saggio: {pag.quotaSaggio ? 'Sì' : 'No'} 
-                                </Typography>
-                              </Box>
-                            </Box>
-                            <IconButton 
-                              size="small" 
-                              onClick={() => handleRimuoviPagamento(index)}
-                              sx={{ color: 'error.main' }}
-                            >
-                              ×
-                            </IconButton>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </Box>
-                </>
-              )}
+              {pagamentiRegistratiContent}
               
               {pagamentiMensili.length === 0 && (
                 <Box 
