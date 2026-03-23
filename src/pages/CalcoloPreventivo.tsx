@@ -774,14 +774,14 @@ const CalcoloPreventivo: React.FC = () => {
 									const percent = parseFloat((imp.valore || '').replace('%', '')) / 100;
 									let valoreCalcolato = imp.valore;
 									if (idx === 0) {
-										valoreCalcolato = (arrotonda5(subtotalCorsiTotale * (1 - percent))).toFixed(2) + ' €';
+										valoreCalcolato = (subtotalCorsiTotale * (1 - percent)).toFixed(2) + ' €';
 									} else if (idx === 1) {
-										valoreCalcolato = (arrotonda5(importoBase + subtotalCorsiScontato * (1 - percent))).toFixed(2) + ' €';
+										valoreCalcolato = (importoBase + subtotalCorsiScontato * (1 - percent)).toFixed(2) + ' €';
 									}
 									else if (idx === 2) {
-										valoreCalcolato = (arrotonda5(importoBase + (subtotalCorsiScontato * (1 - percent)))).toFixed(2) + ' €';
+										valoreCalcolato = (importoBase + (subtotalCorsiScontato * (1 - percent))).toFixed(2) + ' €';
 									} else if (idx === 3) {
-										valoreCalcolato = (arrotonda5(subtotalCorsiTotale * (1 - percent))).toFixed(2) + ' €';
+										valoreCalcolato = (subtotalCorsiTotale * (1 - percent)).toFixed(2) + ' €';
 									}
 									return (
 										<Box key={imp.id} display="flex" alignItems="center" gap={2}>
