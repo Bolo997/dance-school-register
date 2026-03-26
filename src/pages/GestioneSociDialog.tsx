@@ -16,11 +16,13 @@ import {
     InputAdornment,
     IconButton
 } from '@mui/material';
+import Tooltip from '@mui/material/Tooltip';
 import ClearIcon from '@mui/icons-material/Clear';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFormValidation } from '../hooks/useFormValidation';
 import SuccessDialog from '../components/SuccessDialog';
 import { logOperation } from '../utils/logs';
+import { parseListTokens } from '../utils/listTokens';
 
 // Converte una data da formato dd/mm/yyyy a yyyy-MM-dd per gli input type="date"
 const normalizeDateForInput = (value?: string) => {
@@ -247,9 +249,26 @@ const IscrizioneFields = ({ form, handleField, nomiCorsiOrdinati = [], pacchetti
                     {pacchettiOrdinati.map((pacchetto: string) => {
                         const pacchettoObj = accademia?.find((a: any) => a.pacchetto === pacchetto);
                         const pacchettoCat = pacchettoObj ? categorie?.find((cat: any) => cat.categoria === pacchettoObj.categoria) : null;
+                        const corsiTooltip = parseListTokens(pacchettoObj?.corsi);
                         return (
                             <MenuItem key={pacchetto} value={pacchetto}>
-                                <Box sx={{ px: 1, py: 0.5, borderRadius: 1, backgroundColor: (pacchettoCat?.colore ? pacchettoCat.colore + '40' : '#e3f2fd'), display: 'inline-block' }}>{pacchetto}</Box>
+                                <Tooltip
+                                    arrow
+                                    placement="right"
+                                    enterDelay={250}
+                                    title={corsiTooltip.length ? corsiTooltip.join('\n') : ''}
+                                    componentsProps={{
+                                        tooltip: {
+                                            sx: {
+                                                whiteSpace: 'pre-line',
+                                                maxWidth: 380,
+                                            },
+                                        },
+                                    }}
+                                    disableHoverListener={!corsiTooltip.length}
+                                >
+                                    <Box sx={{ px: 1, py: 0.5, borderRadius: 1, backgroundColor: (pacchettoCat?.colore ? pacchettoCat.colore + '40' : '#e3f2fd'), display: 'inline-block' }}>{pacchetto}</Box>
+                                </Tooltip>
                             </MenuItem>
                         );
                     })}
@@ -383,7 +402,25 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
         return Array.from(new Set(accademiaOrdinata.map((a: any) => a.pacchetto).filter(Boolean)));
     }, [accademia]);
     const handleField = useCallback((field: string, value: any) => {
-        setForm((prev: Record<string, any>) => ({ ...prev, [field]: value }));
+        setForm((prev: Record<string, any>) => {
+            // Base e Accademia sono mutuamente esclusivi: se ne scelgo uno, l'altro va azzerato.
+            if (field === 'base') {
+                return {
+                    ...prev,
+                    base: value,
+                    ...(value ? { accademia: '' } : null),
+                };
+            }
+            if (field === 'accademia') {
+                return {
+                    ...prev,
+                    accademia: value,
+                    ...(value ? { base: '' } : null),
+                };
+            }
+
+            return { ...prev, [field]: value };
+        });
     }, []);
 
     const clearDateField = useCallback((field: string) => {
@@ -417,6 +454,19 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
         setShowErrors(true);
         if (!validate(form, anagraficaRules)) return;
         setLoading(true);
+        const selectedAccademia = (form.accademia || '').toString().trim();
+        const accademiaObj = selectedAccademia
+            ? accademia?.find((a: any) => String(a.pacchetto || '') === selectedAccademia)
+            : null;
+        const corsiAccademia = accademiaObj?.corsi ? parseListTokens(accademiaObj.corsi) : [];
+
+        const corsiSelezionati = Array.isArray(form.corsi)
+            ? form.corsi
+            : (typeof form.corsi === 'string' ? parseListTokens(form.corsi) : []);
+
+        const corsiAggiuntiviPuliti = selectedAccademia
+            ? corsiSelezionati.filter((c: string) => !corsiAccademia.includes(c))
+            : corsiSelezionati;
         const formToSave = {
             ...form,
             dataNascita: formatDateForSave(form.dataNascita),
@@ -426,9 +476,10 @@ const SocioFormDialog = ({ open, onClose, initialForm, onSave, editingSocio, cre
             quotaIscrizione: Number(form.quotaIscrizione) || 0,
             quotaSaggio: Number(form.quotaSaggio) || 0,
             quotaMensile: Number(form.quotaMensile) || 0,
-            corsi: Array.isArray(form.corsi)
-                ? form.corsi.join(';')
-                : (typeof form.corsi === 'string' ? form.corsi : ''),
+            // Se è selezionata un'accademia: i corsi del pacchetto vanno salvati in 'base' (separati da ';').
+            // Il campo 'corsi' resta disponibile per i corsi aggiuntivi selezionati manualmente.
+            base: selectedAccademia ? corsiAccademia.join(';') : form.base,
+            corsi: corsiAggiuntiviPuliti.join(';'),
         };
         let result;
         const isUpdate = !!(editingSocio && editingSocio.id);

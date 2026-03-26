@@ -27,11 +27,14 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import CategoryIcon from '@mui/icons-material/Category';
 import GroupIcon from '@mui/icons-material/Group';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Accademia, CategoriaCorso, Corso, InfoSito, Socio } from '../types';
 import { GIORNI_SETTIMANA } from '../constants';
 import { AutoStories } from '@mui/icons-material';
 import { listHasToken, normalizeToken, parseListTokens } from '../utils/listTokens';
+import { exportPartecipantiOrarioExcel } from '../utils/exportPartecipantiOrarioExcel';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PartecipantiDialogProps {
   open: boolean;
@@ -119,9 +122,12 @@ const PartecipantiDialog: React.FC<PartecipantiDialogProps> = ({ open, nomeCorso
 
 const OrarioAnnoAccademico: React.FC = () => {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const { data: categorie, loading: loadingCategorie } = useSupabaseData<CategoriaCorso>('CategorieCorsi');
   const { data: corsi, loading: loadingCorsi } = useSupabaseData<Corso>('Corsi');
   const { data: infoSito } = useSupabaseData<InfoSito>('InfoSito');
+  const { data: soci = [] } = useSupabaseData<Socio>('Soci');
+  const { data: accademia = [] } = useSupabaseData<Accademia>('Accademia');
   const [expandedCategorie, setExpandedCategorie] = useState<Set<string>>(new Set());
   const [openPartecipanti, setOpenPartecipanti] = useState(false);
   const [selectedNomeCorso, setSelectedNomeCorso] = useState<string | null>(null);
@@ -201,7 +207,8 @@ const OrarioAnnoAccademico: React.FC = () => {
         />
       )}
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 4, alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
         <Button
           variant="contained"
           startIcon={<AutoStories />}
@@ -223,6 +230,19 @@ const OrarioAnnoAccademico: React.FC = () => {
         >
           Categorie Corso
         </Button>
+        </Box>
+
+        {profile?.role !== 'reader' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none', ml: 'auto' }}
+            onClick={() => exportPartecipantiOrarioExcel(corsi || [], soci || [], accademia || [])}
+          >
+            Export Excel
+          </Button>
+        )}
       </Box>
 
       {categorie.length === 0 ? (

@@ -280,6 +280,19 @@ const GestioneSoci: React.FC = () => {
               </Box>
             );
           }
+          if (col.key === 'base') {
+            const baseArray = row.base ? String(row.base).split(';').filter((c: string) => c.trim()) : [];
+            if (baseArray.length <= 1) return undefined;
+            return (
+              <Box component="ul" sx={{ margin: 0, paddingLeft: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {baseArray.map((item: string, index: number) => (
+                  <li key={index}>
+                    <Typography variant="body2">{item}</Typography>
+                  </li>
+                ))}
+              </Box>
+            );
+          }
           // Per le altre colonne lascia che DataTable usi col.format / valore di default
           return undefined;
         }}
