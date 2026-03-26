@@ -315,7 +315,7 @@ const Insegnanti: React.FC = () => {
         <Button variant="contained" color="primary" onClick={() => navigate('/gestione-insegnanti')}>
           Gestione Insegnanti
         </Button>
-        {profile?.role !== 'reader' && (
+          {selectedTeacherId && profile?.role !== 'reader' && (
           <Button
             variant="contained"
             color="success"

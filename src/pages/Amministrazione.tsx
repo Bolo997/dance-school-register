@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
@@ -21,6 +21,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { ERROR_MESSAGES } from '../constants';
 import { MenuItem } from '@mui/material';
 import { logOperation } from '../utils/logs';
+import { exportLogsPagamentiExcel } from '../utils/exportLogsPagamentiExcel';
 
 const Amministrazione: React.FC = () => {
     const { removeAll: removeAllFatture } = useSupabaseData('Fatture');
@@ -124,6 +125,7 @@ const Amministrazione: React.FC = () => {
   const formatElementoImportoPreventivo = (p: Partial<ImportoPreventivo>) => joinValues([p.id, p.descrizione, p.valore]);
 
   const [tabValue, setTabValue] = useState(0);
+  const [dailyPaymentsFilter, setDailyPaymentsFilter] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [openConfirmDelete, setOpenConfirmDelete] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -131,6 +133,39 @@ const Amministrazione: React.FC = () => {
   const [form, setForm] = useState<any>({});
   const [currentSection, setCurrentSection] = useState<'users' | 'infoSito' | 'tipoIscrizione' | 'importiPreventivo'>('users');
   const [loading, setLoading] = useState(false);
+
+  const todayIsoDate = useMemo(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const todayDmy = useMemo(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy}`;
+  }, []);
+
+  const logsPagamenti = useMemo(() => {
+    return (logs || []).filter((l: any) => String(l?.lista || '').trim().toLowerCase() === 'fatture');
+  }, [logs]);
+
+  const logsToShow = useMemo(() => {
+    if (!dailyPaymentsFilter) return logs;
+    return (logsPagamenti || []).filter((l: any) => {
+      const raw = String((l as any)?.dataOperazione || (l as any)?.dataoperazione || (l as any)?.data || '').trim();
+      if (!raw) return false;
+      // formato principale: DD/MM/YYYY - HH:mm
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(raw)) return raw.slice(0, 10) === todayDmy;
+      // supporta sia YYYY-MM-DD che DD/MM/YYYY
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10) === todayIsoDate;
+      return false;
+    });
+  }, [dailyPaymentsFilter, logs, logsPagamenti, todayDmy, todayIsoDate]);
 
   const handleConfirmSvuotaLogs = useCallback(async () => {
     setLoading(true);
@@ -483,9 +518,29 @@ const Amministrazione: React.FC = () => {
       {tabValue === 0 && (
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="subtitle1">
-              Numero elementi: {logs?.length ?? 0}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography variant="subtitle1">
+                Numero elementi: {(logsToShow as any[])?.length ?? 0}
+              </Typography>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={() => exportLogsPagamentiExcel(logsPagamenti)}
+                sx={{ fontWeight: 600, textTransform: 'none' }}
+                disabled={!logsPagamenti?.length}
+              >
+                Export Pagamenti
+              </Button>
+              <Button
+                variant={dailyPaymentsFilter ? 'contained' : 'outlined'}
+                color="primary"
+                onClick={() => setDailyPaymentsFilter((v) => !v)}
+                sx={{ fontWeight: 600, textTransform: 'none' }}
+              >
+                Pagamenti Giornalieri
+              </Button>
+            </Box>
+
             <Button
               variant="contained"
               color="error"
@@ -498,7 +553,7 @@ const Amministrazione: React.FC = () => {
           <DataTable
             title="Logs"
             columns={logsColumns}
-            data={logs}
+            data={logsToShow}
             emptyMessage="Nessun log presente"
           />
         </>

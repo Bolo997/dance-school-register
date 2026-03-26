@@ -36,6 +36,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { formatEuro, formatDate } from '../utils/formatters';
 import PrintIcon from '@mui/icons-material/Print';
+import BarChartIcon from '@mui/icons-material/BarChart';
 
 const MESI_DISPONIBILI = [
   'Settembre',
@@ -86,6 +87,9 @@ const Soci: React.FC = () => {
   const [pagamentiMensili, setPagamentiMensili] = useState<{mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean, note?: string}[]>([]);
 
   const [receiptPaymentIndex, setReceiptPaymentIndex] = useState<number | null>(null);
+
+  const [openSaggioChart, setOpenSaggioChart] = useState(false);
+  const [chartRow, setChartRow] = useState<any | null>(null);
 
   const mesiDisponibili = MESI_DISPONIBILI;
 
@@ -219,6 +223,50 @@ const Soci: React.FC = () => {
       });
   }, []);
 
+  const getSaggioMultiplierForMese = useCallback((mese: string): number => {
+    const m = (mese || '').trim();
+    if (!m) return 0;
+    if (m === 'Annuale') return 9;
+    if (m.includes('Trimestre')) return 3;
+    // mesi singoli
+    return 1;
+  }, []);
+
+  const getQuotaSaggioPagata = useCallback((row: any): { pagata: number; totale: number } => {
+    const quotaSaggioNum = (typeof row?.quotaSaggio === 'string' ? parseFloat(row.quotaSaggio) : Number(row?.quotaSaggio)) || 0;
+    const totale = quotaSaggioNum > 0 ? quotaSaggioNum * 9 : 0;
+    const raw = String(row?.pagamenti || '');
+    if (!raw.trim() || quotaSaggioNum <= 0) return { pagata: 0, totale };
+
+    const items = raw.split(';').filter((p: string) => p.trim());
+    let pagata = 0;
+
+    for (const item of items) {
+      const parts = item.split('-');
+      const mese = (parts[0] || '').trim();
+      const quotaSaggioFlagStr = (parts[4] || '').trim().toLowerCase();
+      const flag = quotaSaggioFlagStr === 'true';
+      if (!flag) continue;
+
+      const mult = getSaggioMultiplierForMese(mese);
+      pagata += quotaSaggioNum * mult;
+    }
+
+    if (!Number.isFinite(pagata) || pagata < 0) pagata = 0;
+    if (totale > 0) pagata = Math.min(pagata, totale);
+    return { pagata, totale };
+  }, [getSaggioMultiplierForMese]);
+
+  const handleOpenSaggioChart = useCallback((row: any) => {
+    setChartRow(row);
+    setOpenSaggioChart(true);
+  }, []);
+
+  const handleCloseSaggioChart = useCallback(() => {
+    setOpenSaggioChart(false);
+    setChartRow(null);
+  }, []);
+
   const formatReceiptDate = useCallback((d: Date) => {
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -272,12 +320,21 @@ const Soci: React.FC = () => {
   }, []);
 
   const calcolaImporto = useCallback((quotaMensile: number | string, quotaSaggio: number | string) => {
-    if (!meseSelezionato) {
-      setImportoPagamento('');
-      return;
-    }
     const qm = (typeof quotaMensile === 'string' ? parseFloat(quotaMensile) : quotaMensile) || 0;
     const qs = (typeof quotaSaggio === 'string' ? parseFloat(quotaSaggio) : quotaSaggio) || 0;
+
+    // Se non è selezionato alcun periodo, ma Quota Saggio è spuntata,
+    // imposta l'importo almeno alla quota saggio (richiesta UX).
+    if (!meseSelezionato) {
+      if (quotaSaggioFlag && qs > 0) {
+        const roundedQs = arrotonda5(qs);
+        setImportoPagamento(roundedQs > 0 ? roundedQs.toFixed(2) : '');
+      } else {
+        setImportoPagamento('');
+      }
+      return;
+    }
+
     let importoFinale = 0;
     let moltiplicatore = 1;
     if (meseSelezionato === 'Annuale') {
@@ -287,7 +344,15 @@ const Soci: React.FC = () => {
       moltiplicatore = 3;
       importoFinale = (qm * moltiplicatore) - ((qm * 3) / 100 * 10);
     } else if (meseSelezionato === 'Vari') {
-      setImportoPagamento('');
+      // Importo manuale: non sovrascrivere.
+      // Se Quota Saggio è spuntata e l'importo è vuoto, imposta almeno la quota saggio.
+      if (quotaSaggioFlag) {
+        const current = parseFloat(String(importoPagamento || '').trim());
+        if (!importoPagamento || String(importoPagamento).trim() === '' || Number.isNaN(current)) {
+          const roundedQs = qs > 0 ? arrotonda5(qs) : 0;
+          setImportoPagamento(roundedQs > 0 ? roundedQs.toFixed(2) : '');
+        }
+      }
       return;
     } else {
       importoFinale = qm;
@@ -616,7 +681,7 @@ const Soci: React.FC = () => {
     if (annFilled) {
       const annIdx = fattureColumns.findIndex(c => c.key === 'annuale');
       const colIdx = fattureColumns.findIndex(c => c.key === key);
-      if (colIdx < annIdx && colIdx > 5) return green;
+      if (colIdx < annIdx && colIdx > 6) return green;
     }
 
     // Trimestri: mark months in respective ranges if trimester is filled
@@ -624,9 +689,24 @@ const Soci: React.FC = () => {
     const secondoFilled = isFilled(row.secondoTrimestre);
     const terzoFilled = isFilled(row.terzoTrimestre);
 
-    if (primoFilled && ['settembre','ottobre','novembre','dicembre'].includes(key)) return green;
+    // Non colorare mai Settembre
+    if (primoFilled && ['ottobre','novembre','dicembre'].includes(key)) return green;
     if (secondoFilled && ['gennaio','febbraio','marzo'].includes(key)) return green;
     if (terzoFilled && ['aprile','maggio','giugno'].includes(key)) return green;
+
+    // Mesi: se la cella contiene un dato, colorala di verde (ma mai Settembre)
+    const meseKeys = new Set([
+      'ottobre',
+      'novembre',
+      'dicembre',
+      'gennaio',
+      'febbraio',
+      'marzo',
+      'aprile',
+      'maggio',
+      'giugno',
+    ]);
+    if (meseKeys.has(key) && isFilled(row[key])) return green;
 
     // Sticky a sinistra per Nome e Cognome
     if (key === 'nome' || key === 'cognome') {
@@ -680,10 +760,11 @@ const Soci: React.FC = () => {
         data={fattureConSoci}
         getRowId={getFattureRowId}
         onEdit={handleOpenDialog}
+        onChart={handleOpenSaggioChart}
         emptyMessage="Nessun socio presente"
         renderCell={renderCell}
         getCellSx={getCellSx}
-        actionColumnWidth={56}
+        actionColumnWidth={96}
         getHeadCellSx={getHeadCellSx}
         stringSortLocale="it"
       />
@@ -728,7 +809,6 @@ const Soci: React.FC = () => {
                       onChange={(e) => {
                         const value = e.target.value;
                         setMeseSelezionato(value);
-                        if (value === 'Vari' || value === 'Varie') setQuotaSaggioFlag(false);
                       }}
                       sx={{ flex: 1, maxWidth: 242 }}
                       required
@@ -737,15 +817,43 @@ const Soci: React.FC = () => {
                     >
                       {mesiOptions}
                     </TextField>
-
-                    {meseSelezionato !== 'Vari' && meseSelezionato !== 'Varie' && (
                       <FormControlLabel
-                        control={<Checkbox checked={quotaSaggioFlag} onChange={(e) => setQuotaSaggioFlag(e.target.checked)} />}
+                        control={
+                          <Checkbox
+                            checked={quotaSaggioFlag}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const socioSelezionato = soci.find((s) => s.id === (form.idSocio as string));
+                              const qsRaw = socioSelezionato ? socioSelezionato.quotaSaggio : 0;
+                              const qsNum = (typeof qsRaw === 'string' ? parseFloat(qsRaw) : (qsRaw as any)) || 0;
+
+                              if (checked) {
+                                setQuotaSaggioFlag(true);
+                                const current = parseFloat(String(importoPagamento || '').trim());
+                                if (!importoPagamento || String(importoPagamento).trim() === '' || Number.isNaN(current)) {
+                                  const rounded = qsNum > 0 ? arrotonda5(qsNum) : 0;
+                                  setImportoPagamento(rounded > 0 ? rounded.toFixed(2) : '');
+                                } else {
+                                  const next = current + (qsNum > 0 ? qsNum : 0);
+                                  setImportoPagamento(next > 0 ? next.toFixed(2) : '');
+                                }
+                              } else {
+                                setQuotaSaggioFlag(false);
+                                const current = parseFloat(String(importoPagamento || '').trim());
+                                if (!importoPagamento || String(importoPagamento).trim() === '' || Number.isNaN(current)) {
+                                  setImportoPagamento('');
+                                } else {
+                                  const next = Math.max(0, current - (qsNum > 0 ? qsNum : 0));
+                                  setImportoPagamento(next > 0 ? next.toFixed(2) : '');
+                                }
+                              }
+                            }}
+                          />
+                        }
                         label={`Quota Saggio (${quotaSaggioDisplay})`}
                         labelPlacement="end"
                         sx={{ ml: 1 }}
                       />
-                    )}
                   </Box>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 2 }}>
                     <TextField
@@ -828,6 +936,59 @@ const Soci: React.FC = () => {
           <Button onClick={handleSave} variant="contained" disabled={loading}>
             {loading ? <CircularProgress size={24} /> : 'Salva'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openSaggioChart} onClose={handleCloseSaggioChart} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <BarChartIcon fontSize="small" />
+          Quota Saggio
+        </DialogTitle>
+        <DialogContent>
+          {(() => {
+            const { pagata, totale } = getQuotaSaggioPagata(chartRow);
+            const restante = Math.max(0, (totale || 0) - (pagata || 0));
+            const denom = (totale || 0) > 0 ? totale : (pagata + restante);
+            const greenPct = denom > 0 ? (pagata / denom) * 100 : 0;
+            const redPct = Math.max(0, 100 - greenPct);
+
+            return (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Totale previsto: €{(totale || 0).toFixed(2)} (Quota Saggio × 9)
+                </Typography>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
+                      Pagata
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      €{(pagata || 0).toFixed(2)}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
+                      Restante
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      €{(restante || 0).toFixed(2)}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mt: 1, height: 14, borderRadius: 999, overflow: 'hidden', bgcolor: 'action.hover' }}>
+                    <Box sx={{ display: 'flex', height: '100%' }}>
+                      <Box sx={{ width: `${greenPct}%`, bgcolor: 'success.main' }} />
+                      <Box sx={{ width: `${redPct}%`, bgcolor: 'error.main' }} />
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseSaggioChart}>Chiudi</Button>
         </DialogActions>
       </Dialog>
 

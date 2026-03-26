@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../config/supabase';
 import { createCreatoModificato } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,7 +30,7 @@ interface UseSupabaseDataReturn<T> {
   removeAll?: () => Promise<{ success: boolean; error?: any }>;
 }
 
-const TABLES_WITHOUT_TIMESTAMPS = ['Users', 'Role', 'InfoSito', 'TipoIscrizione', 'Logs'];
+const TABLES_WITHOUT_TIMESTAMPS = ['Users', 'Role', 'InfoSito', 'TipoIscrizione', 'ImportiPreventivo', 'Logs'];
 
 export function useSupabaseData<T extends { id: string }>(
   tableName: string,
@@ -43,7 +43,14 @@ export function useSupabaseData<T extends { id: string }>(
   const [error, setError] = useState<string | null>(null);
   const { userName = 'Unknown' } = options;
 
-  const cacheKey = getCacheKey(tableName, orderBy);
+  // Normalizza orderBy per evitare refetch infiniti quando il caller passa un oggetto inline
+  const orderByKey = orderBy ? `${orderBy.column}:${orderBy.ascending}` : 'none';
+  const stableOrderBy = useMemo(() => {
+    if (!orderBy) return null;
+    return { column: orderBy.column, ascending: orderBy.ascending };
+  }, [orderByKey]);
+
+  const cacheKey = getCacheKey(tableName, stableOrderBy);
 
   const reloadInternal = useCallback(async (silent: boolean) => {
     if (!silent) setLoading(true);
@@ -51,8 +58,8 @@ export function useSupabaseData<T extends { id: string }>(
     
     let query = supabase.from(tableName).select('*');
     
-    if (orderBy) {
-      query = query.order(orderBy.column, { ascending: orderBy.ascending });
+    if (stableOrderBy) {
+      query = query.order(stableOrderBy.column, { ascending: stableOrderBy.ascending });
     }
     
     const { data: result, error: fetchError } = await query;
@@ -66,7 +73,7 @@ export function useSupabaseData<T extends { id: string }>(
     }
     
     if (!silent) setLoading(false);
-  }, [tableName, orderBy, cacheKey]);
+  }, [tableName, stableOrderBy, cacheKey]);
 
   const reload = useCallback(async () => {
     await reloadInternal(false);

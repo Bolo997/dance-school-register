@@ -15,6 +15,7 @@ import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -28,6 +29,7 @@ interface DataTableProps {
   data: any[];
   onAdd?: () => void;
   onEdit?: (item: any) => void;
+  onChart?: (item: any) => void;
   onDelete?: (id: string) => void;
   onCopy?: (item: any) => void;
   onModulo?: (item: any) => void;
@@ -94,6 +96,7 @@ const DataTable = React.memo<DataTableProps>(({
   data,
   onAdd,
   onEdit,
+  onChart,
   onDelete,
   onCopy,
   onModulo,
@@ -185,13 +188,18 @@ const DataTable = React.memo<DataTableProps>(({
   // Funzione per generare le azioni
   const renderActions = (item: any) => {
     if (profile?.role === 'reader' || (profile.role === "contribute" && !location.pathname.includes("soci"))) return null;
-    if (!onEdit && !onCopy && !onModulo && !onDelete) return null;
+    if (!onEdit && !onChart && !onCopy && !onModulo && !onDelete) return null;
     return (
       <Tooltip title={getTooltipTitle(item)} arrow placement="right">
         <Box sx={{ display: 'inline-flex' }}>
           {onEdit && (
             <IconButton size="small" onClick={() => onEdit(item)}>
               <EditIcon fontSize="small" />
+            </IconButton>
+          )}
+          {onChart && (
+            <IconButton size="small" onClick={() => onChart(item)} title="Chart">
+              <BarChartIcon fontSize="small" />
             </IconButton>
           )}
           {onCopy && (
