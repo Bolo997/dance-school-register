@@ -3,6 +3,18 @@ import { supabase } from '../config/supabase';
 import { createCreatoModificato } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 
+type CacheEntry<T> = {
+  data: T[];
+  lastFetchedAt: number;
+};
+
+// Cache in-memory (per tab). Evita spinner su refetch ripetuti.
+const cache = new Map<string, CacheEntry<any>>();
+
+const getCacheKey = (tableName: string, orderBy: { column: string; ascending: boolean } | null) => {
+  return `${tableName}::${orderBy ? `${orderBy.column}:${orderBy.ascending}` : 'none'}`;
+};
+
 interface UseSupabaseDataOptions {
   userName?: string;
 }
@@ -31,8 +43,10 @@ export function useSupabaseData<T extends { id: string }>(
   const [error, setError] = useState<string | null>(null);
   const { userName = 'Unknown' } = options;
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  const cacheKey = getCacheKey(tableName, orderBy);
+
+  const reloadInternal = useCallback(async (silent: boolean) => {
+    if (!silent) setLoading(true);
     setError(null);
     
     let query = supabase.from(tableName).select('*');
@@ -46,11 +60,21 @@ export function useSupabaseData<T extends { id: string }>(
     if (fetchError) {
       setError(fetchError.message);
     } else {
-      setData(result || []);
+      const next = (result || []) as T[];
+      setData(next);
+      cache.set(cacheKey, { data: next, lastFetchedAt: Date.now() });
     }
     
-    setLoading(false);
-  }, [tableName, orderBy]);
+    if (!silent) setLoading(false);
+  }, [tableName, orderBy, cacheKey]);
+
+  const reload = useCallback(async () => {
+    await reloadInternal(false);
+  }, [reloadInternal]);
+
+  const reloadSilent = useCallback(async () => {
+    await reloadInternal(true);
+  }, [reloadInternal]);
 
   const create = useCallback(async (item: Partial<T>): Promise<{ success: boolean; error?: any }> => {
     const itemToInsert = { ...item };
@@ -63,12 +87,12 @@ export function useSupabaseData<T extends { id: string }>(
     
     if (insertError) return { success: false, error: insertError };
     // Ricarica i dati in background per migliorare la reattività della UI
-    reload().catch((err) => {
+    reloadSilent().catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Errore durante il reload dopo create:', err);
     });
     return { success: true };
-  }, [tableName, userName, reload]);
+  }, [tableName, userName, reloadSilent]);
 
   const update = useCallback(async (id: string, item: Partial<T>): Promise<{ success: boolean; error?: any }> => {
     const itemToUpdate = { ...item };
@@ -81,36 +105,36 @@ export function useSupabaseData<T extends { id: string }>(
     
     if (updateError) return { success: false, error: updateError };
     // Ricarica i dati in background per migliorare la reattività della UI
-    reload().catch((err) => {
+    reloadSilent().catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Errore durante il reload dopo update:', err);
     });
     return { success: true };
-  }, [tableName, userName, reload]);
+  }, [tableName, userName, reloadSilent]);
 
   const remove = useCallback(async (id: string): Promise<{ success: boolean; error?: any }> => {
     const { error: deleteError } = await supabase.from(tableName).delete().eq('id', id);
     
     if (deleteError) return { success: false, error: deleteError };
     // Ricarica i dati in background per migliorare la reattività della UI
-    reload().catch((err) => {
+    reloadSilent().catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Errore durante il reload dopo delete:', err);
     });
     return { success: true };
-  }, [tableName, reload]);
+  }, [tableName, reloadSilent]);
 
   const removeAll = useCallback(async (): Promise<{ success: boolean; error?: any }> => {
     // Supabase/Postgres richiede una WHERE, usiamo gt('id', 0) per eliminare tutti
     const { error: deleteError } = await supabase.from(tableName).delete().gt('id', 0);
     if (deleteError) return { success: false, error: deleteError };
     // Ricarica i dati in background per migliorare la reattività della UI
-    reload().catch((err) => {
+    reloadSilent().catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Errore durante il reload dopo removeAll:', err);
     });
     return { success: true };
-  }, [tableName, reload]);
+  }, [tableName, reloadSilent]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -121,8 +145,19 @@ export function useSupabaseData<T extends { id: string }>(
       return;
     }
 
+    const cached = cache.get(cacheKey) as CacheEntry<T> | undefined;
+    if (cached?.data) {
+      setData(cached.data);
+      setLoading(false);
+      // riallinea in background (evita spinner)
+      reloadSilent().catch(() => {
+        /* noop */
+      });
+      return;
+    }
+
     reload();
-  }, [reload, user, authLoading]);
+  }, [reload, reloadSilent, user, authLoading, cacheKey]);
 
   return { data, loading, error, reload, create, update, remove, removeAll };
 }

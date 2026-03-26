@@ -87,10 +87,17 @@ export const AuthProvider = React.memo<{ children: React.ReactNode }>(({ childre
           .getSession()
           .then(({ data }) => {
             if (!mounted) return;
-            setUser(data.session?.user ?? null);
-            fetchProfile(data.session?.user ?? null).catch(() => {
-              /* noop */
+            const nextUser = data.session?.user ?? null;
+            // Evita aggiornamenti se la sessione non è cambiata (riduce reload UI).
+            setUser((prev) => {
+              if ((prev?.id ?? null) === (nextUser?.id ?? null)) return prev;
+              return nextUser;
             });
+            if ((user?.id ?? null) !== (nextUser?.id ?? null)) {
+              fetchProfile(nextUser).catch(() => {
+                /* noop */
+              });
+            }
           })
           .catch(() => {
             /* noop */

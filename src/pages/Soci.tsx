@@ -35,6 +35,7 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { formatEuro, formatDate } from '../utils/formatters';
+import PrintIcon from '@mui/icons-material/Print';
 
 const MESI_DISPONIBILI = [
   'Settembre',
@@ -83,6 +84,8 @@ const Soci: React.FC = () => {
   const [quotaSaggioFlag, setQuotaSaggioFlag] = useState(false);
   const [notePagamento, setNotePagamento] = useState('');
   const [pagamentiMensili, setPagamentiMensili] = useState<{mese: string, importo: number, metodo?: string, data?: string, quotaSaggio?: boolean, note?: string}[]>([]);
+
+  const [receiptPaymentIndex, setReceiptPaymentIndex] = useState<number | null>(null);
 
   const mesiDisponibili = MESI_DISPONIBILI;
 
@@ -203,6 +206,37 @@ const Soci: React.FC = () => {
     });
     setPagamentiMensili(parsed);
   }, []);
+
+  const parsePagamentiRaw = useCallback((pagamentiString: string) => {
+    if (!pagamentiString) return [] as { raw: string; mese: string }[];
+    return pagamentiString
+      .split(';')
+      .filter((p) => p.trim())
+      .map((raw) => {
+        const firstDash = raw.indexOf('-');
+        const mese = firstDash >= 0 ? raw.slice(0, firstDash).trim() : (raw.split(':')[0] || '').trim();
+        return { raw, mese };
+      });
+  }, []);
+
+  const formatReceiptDate = useCallback((d: Date) => {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }, []);
+
+  const handlePrintReceipt = useCallback((index: number) => {
+    if (!form.idSocio) return;
+    const rawItems = parsePagamentiRaw(String(form.pagamenti || ''));
+    if (rawItems.length === 0) return;
+    if (index < 0 || index >= rawItems.length) return;
+    setReceiptPaymentIndex(index);
+
+    setTimeout(() => {
+      window.print();
+    }, 0);
+  }, [form.idSocio, form.pagamenti, parsePagamentiRaw]);
 
   const handleOpenDialog = useCallback((row?: any) => {
     setImportoPagamento('');
@@ -326,6 +360,7 @@ const Soci: React.FC = () => {
     setQuotaSaggioFlag(false);
     setNotePagamento('');
     setPaymentAttempted(false);
+    setReceiptPaymentIndex(null);
     clearAllErrors();
   }, [clearAllErrors]);
 
@@ -383,9 +418,23 @@ const Soci: React.FC = () => {
               <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
                   <Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {pag.mese}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {pag.mese}
+                      </Typography>
+                      <Tooltip title="Stampa ricevuta" arrow>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handlePrintReceipt(index)}
+                            disabled={!form.idSocio || !String(form.pagamenti || '').trim()}
+                          >
+                            <PrintIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600 }}>
                         €{pag.importo.toFixed(2)}
@@ -424,7 +473,45 @@ const Soci: React.FC = () => {
         </Box>
       </>
     );
-  }, [pagamentiMensili, handleRimuoviPagamento]);
+  }, [pagamentiMensili, handleRimuoviPagamento, form.idSocio, form.pagamenti, handlePrintReceipt]);
+
+  const receiptData = useMemo(() => {
+    const socioSelezionato = soci.find((s) => s.id === (form.idSocio as string));
+    const rawItems = parsePagamentiRaw(String(form.pagamenti || ''));
+    const idx = typeof receiptPaymentIndex === 'number' ? receiptPaymentIndex : -1;
+    const raw = idx >= 0 && idx < rawItems.length ? rawItems[idx].raw : '';
+
+    const parts = raw ? raw.split('-') : [];
+    const mese = (parts[0] || '').trim();
+    const importoStr = (parts[1] || '').trim();
+    const metodo = (parts[2] || '').trim();
+    const quotaNum = importoStr ? Number(importoStr) : 0;
+
+    const receiptNumber = form.idSocio ? `${String(form.idSocio)}${idx + 1}` : '';
+    const today = formatReceiptDate(new Date());
+
+    const accademiaDisplay = socioSelezionato?.accademia
+      ? socioSelezionato.accademia.split(';').map((c) => c.trim()).filter(Boolean)
+      : [];
+    const baseDisplay = socioSelezionato?.base
+      ? socioSelezionato.base.split(';').map((c) => c.trim()).filter(Boolean)
+      : [];
+    const corsiDisplay = socioSelezionato?.corsi
+      ? socioSelezionato.corsi.split(';').map((c) => c.trim()).filter(Boolean)
+      : [];
+
+    return {
+      socio: socioSelezionato,
+      mese,
+      quotaNum: Number.isFinite(quotaNum) ? quotaNum : 0,
+      metodo,
+      receiptNumber,
+      today,
+      accademiaDisplay,
+      baseDisplay,
+      corsiDisplay,
+    };
+  }, [soci, form.idSocio, form.pagamenti, receiptPaymentIndex, parsePagamentiRaw, formatReceiptDate]);
 
   const handleChange = useCallback((field: keyof Fattura, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -650,6 +737,7 @@ const Soci: React.FC = () => {
                     >
                       {mesiOptions}
                     </TextField>
+
                     {meseSelezionato !== 'Vari' && meseSelezionato !== 'Varie' && (
                       <FormControlLabel
                         control={<Checkbox checked={quotaSaggioFlag} onChange={(e) => setQuotaSaggioFlag(e.target.checked)} />}
@@ -742,6 +830,229 @@ const Soci: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {receiptPaymentIndex !== null && (
+        <Box className="print-receipt" sx={{ display: 'none' }}>
+          <Box sx={{ fontFamily: 'Arial, sans-serif', color: '#000' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box>
+                <Typography sx={{ fontSize: '28px', fontWeight: 800, letterSpacing: 1 }}>
+                  RICEVUTA
+                </Typography>
+                <Typography sx={{ fontSize: '10px', mt: 0.5 }}>
+                  PER CORSI ED ATTIVITA' EXTRA SCOLASTICHE A CARATTERE DIDATTICO E FORMATIVO
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 3, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 4 }}>
+              <Box>
+                <Typography sx={{ fontSize: '12px', fontWeight: 700 }}>
+                  CENTRO STUDI DANZA CLASSICA a.c.s.d.
+                </Typography>
+                <Typography sx={{ fontSize: '12px' }}>Via di Monteverde, 7/G</Typography>
+                <Typography sx={{ fontSize: '12px' }}>00152 - Roma (RM)</Typography>
+                <Typography sx={{ fontSize: '12px' }}>P.IVA 05373771004</Typography>
+                <Typography sx={{ fontSize: '12px' }}>06 535409 / 388 1858282</Typography>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: 1 }}>
+                <Typography sx={{ fontSize: '12px', fontWeight: 700 }}>DATA</Typography>
+                <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 700 }}>{receiptData.today}</Typography>
+                <Typography sx={{ fontSize: '12px', fontWeight: 700 }}>RICEVUTA N°</Typography>
+                <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 700 }}>{receiptData.receiptNumber}</Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 4, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 4 }}>
+              <Box>
+                <Typography sx={{ fontSize: '12px', fontWeight: 800, mb: 1 }}>DATI DEL SOCIO</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 0.75 }}>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>COGNOME</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{receiptData.socio?.cognome || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>NOME</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{receiptData.socio?.nome || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>C.F.</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.codFiscale || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>INDIRIZZO</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.indirizzo || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>CITTA'</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.citta || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>TELEFONO</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.telefono || ''}</Typography>
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography sx={{ fontSize: '12px', fontWeight: 800, mb: 1 }}>GENITORE (se minorenne)</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 0.75 }}>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>COGNOME</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.cognomeGenitore || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>NOME</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.nomeGenitore || ''}</Typography>
+                  <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>C.F.</Typography>
+                  <Typography sx={{ fontSize: '11px' }}>{(receiptData.socio as any)?.codFiscaleGenitore || ''}</Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 4 }}>
+              {/* TABELLE */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                {!!receiptData.accademiaDisplay.length && (
+                  <Box sx={{ border: '1px solid #000' }}>
+                    <Box sx={{ borderBottom: '1px solid #000', px: 1, py: 0.5, bgcolor: '#f2f2f2' }}>
+                      <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>ACCADEMIA</Typography>
+                    </Box>
+                    <Box>
+                      {receiptData.accademiaDisplay.map((c: string, i: number) => (
+                        <Box
+                          key={`acc-${i}`}
+                          sx={{
+                            borderBottom: i === receiptData.accademiaDisplay.length - 1 ? 'none' : '1px solid #000',
+                            px: 1,
+                            py: 0.55,
+                            minHeight: '22px',
+                          }}
+                        >
+                          <Typography sx={{ fontSize: '11px' }}>{c}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {!!receiptData.baseDisplay.length && (
+                  <Box sx={{ border: '1px solid #000' }}>
+                    <Box sx={{ borderBottom: '1px solid #000', px: 1, py: 0.5, bgcolor: '#f2f2f2' }}>
+                      <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>BASE</Typography>
+                    </Box>
+                    <Box>
+                      {receiptData.baseDisplay.map((c: string, i: number) => (
+                        <Box
+                          key={`base-${i}`}
+                          sx={{
+                            borderBottom: i === receiptData.baseDisplay.length - 1 ? 'none' : '1px solid #000',
+                            px: 1,
+                            py: 0.55,
+                            minHeight: '22px',
+                          }}
+                        >
+                          <Typography sx={{ fontSize: '11px' }}>{c}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {!!receiptData.corsiDisplay.length && (
+                  <Box sx={{ border: '1px solid #000' }}>
+                    <Box sx={{ borderBottom: '1px solid #000', px: 1, py: 0.5, bgcolor: '#f2f2f2' }}>
+                      <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>CORSI</Typography>
+                    </Box>
+                    <Box>
+                      {receiptData.corsiDisplay.map((c: string, i: number) => (
+                        <Box
+                          key={`corso-${i}`}
+                          sx={{
+                            borderBottom: i === receiptData.corsiDisplay.length - 1 ? 'none' : '1px solid #000',
+                            px: 1,
+                            py: 0.55,
+                            minHeight: '22px',
+                          }}
+                        >
+                          <Typography sx={{ fontSize: '11px' }}>{c}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+
+              {/* QUOTA / PAGAMENTO (a capo) */}
+              <Box sx={{ mt: 5, display: 'flex', justifyContent: 'center' }}>
+                <Box sx={{ width: '420px' }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 90px 20px 30px', rowGap: 1 }}>
+                  <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>QUOTA</Typography>
+                  <Typography sx={{ fontSize: '12px' }} />
+                  <Typography sx={{ fontSize: '12px' }} />
+                  <Typography sx={{ fontSize: '12px' }} />
+
+                  <Typography sx={{ fontSize: '12px' }} />
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right' }}>{receiptData.quotaNum ? receiptData.quotaNum.toFixed(2) : '0'}</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'center' }}>-</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right' }}>€</Typography>
+
+                  <Typography sx={{ fontSize: '12px' }}>(Q.S.)</Typography>
+                  <Typography />
+                  <Typography />
+                  <Typography />
+
+                  <Typography sx={{ fontSize: '12px' }}>MESE DI RIFERIMENTO</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 700 }}>{(receiptData.mese || '').toUpperCase()}</Typography>
+                  <Typography />
+                  <Typography />
+
+                  <Typography sx={{ fontSize: '12px' }}>MODALITA' DI PAGAMENTO</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 700 }}>{(receiptData.metodo || '').toUpperCase()}</Typography>
+                  <Typography />
+                  <Typography />
+                </Box>
+
+                <Divider sx={{ my: 2, borderColor: '#000' }} />
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 90px 20px 30px' }}>
+                  <Typography sx={{ fontSize: '12px', fontWeight: 900 }}>TOTALE</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 900 }}>{receiptData.quotaNum ? receiptData.quotaNum.toFixed(2) : '0'}</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'center', fontWeight: 900 }}>-</Typography>
+                  <Typography sx={{ fontSize: '12px', textAlign: 'right', fontWeight: 900 }}>€</Typography>
+                </Box>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 6, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>
+                A.C.S.D. CENTRO STUDI DANZA CLASSICA
+              </Typography>
+              <Typography sx={{ fontSize: '12px' }}>Via di Monteverde, 7/G</Typography>
+              <Typography sx={{ fontSize: '12px' }}>00152 Roma</Typography>
+              <Typography sx={{ fontSize: '12px', fontWeight: 800 }}>
+                C.F. e P. IVA 05373771004
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            .print-receipt,
+            .print-receipt * {
+              visibility: visible !important;
+            }
+            .print-receipt {
+              display: block !important;
+              position: fixed !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              padding: 16px !important;
+              background: white !important;
+            }
+            @page {
+              margin: 0.7cm;
+            }
+            body {
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+          }
+        `}
+      </style>
     </Container>
   );
 };
