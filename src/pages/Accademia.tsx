@@ -86,7 +86,7 @@ const accademiaExcelColumns = [
         .split(';')
         .map((v) => v.trim())
         .filter(Boolean)
-        .join('\n'),
+        .join(';'),
   },
   { key: 'prezzo', label: 'Prezzo', format: (value: number) => formatPrice(value) },
 ];

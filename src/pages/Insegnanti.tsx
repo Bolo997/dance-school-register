@@ -315,30 +315,37 @@ const Insegnanti: React.FC = () => {
         <Button variant="contained" color="primary" onClick={() => navigate('/gestione-insegnanti')}>
           Gestione Insegnanti
         </Button>
-          {selectedTeacherId && profile?.role !== 'reader' && (
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<FileDownloadIcon />}
-            sx={{ fontWeight: 600, textTransform: 'none' }}
-            onClick={() => {
-              if (!insegnanteSelezionato) return;
-              const rows = pagamentiInsegnante.map((p) => ({
-                cognome: insegnanteSelezionato.cognome,
-                nome: insegnanteSelezionato.nome,
-                disciplina: p.disciplina,
-                settimana: p.settimana,
-                mese: p.mese,
-                data: new Date(p.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-                compensoLezione: p.compensoLezione,
-                note: p.note,
-              }));
-              exportPagamentiInsegnantiExcel(rows, pagamentiExcelColumns);
-            }}
-          >
-            Export Excel
-          </Button>
-        )}
+		{profile?.role !== 'reader' && (
+			<Button
+				variant="contained"
+				color="success"
+				startIcon={<FileDownloadIcon />}
+				sx={{ fontWeight: 600, textTransform: 'none' }}
+				onClick={() => {
+          const teacherById = new Map<string, Insegnante>();
+          (insegnanti || []).forEach((t) => {
+            if (t?.id) teacherById.set(String(t.id), t);
+          });
+
+          const rows = (pagamenti || []).map((p) => {
+            const t = teacherById.get(String(p.idInsegnante || ''));
+            return {
+              cognome: t?.cognome || '',
+              nome: t?.nome || '',
+              disciplina: p.disciplina,
+              settimana: p.settimana,
+              mese: p.mese,
+              data: new Date(p.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+              compensoLezione: p.compensoLezione,
+              note: p.note,
+            };
+          });
+					exportPagamentiInsegnantiExcel(rows, pagamentiExcelColumns);
+				}}
+			>
+				Export Pagamenti
+			</Button>
+		)}
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <TextField

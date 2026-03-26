@@ -61,20 +61,46 @@ const insegnantiExcelColumns = [
   {
     key: 'discipline',
     label: 'Discipline',
-    format: (discipline: string[]) => {
-      if (!discipline || discipline.length === 0) return '';
-      return discipline
+    format: (discipline: unknown) => {
+      const list: string[] = Array.isArray(discipline)
+        ? (discipline as unknown[]).map((v) => String(v))
+        : typeof discipline === 'string'
+          ? (() => {
+              const raw = String(discipline || '').trim();
+              if (!raw) return [];
+
+              // Formato tipico DB: stringa con token separati da ';' che rappresentano
+              // gruppi di 3: materia;ora;importo;materia;ora;importo;...
+              const tokens = raw.split(';').map((t) => t.trim()).filter(Boolean);
+              if (tokens.length >= 3 && tokens.length % 3 === 0) {
+                const out: string[] = [];
+                for (let i = 0; i < tokens.length; i += 3) {
+                  out.push(`${tokens[i]};${tokens[i + 1]};${tokens[i + 2]}`);
+                }
+                return out;
+              }
+
+              // Fallback: separatori alternativi tra discipline
+              return raw.split(/\r?\n|\|/).map((s) => s.trim()).filter(Boolean);
+            })()
+          : [];
+
+      if (list.length === 0) return '';
+
+      return list
         .map((disc) => {
-          const parts = disc.split(';');
+          const parts = String(disc).split(';');
           const materia = parts[0]?.trim() || '';
           const ora = parts[1]?.trim() || '';
           const importo = parts[2]?.trim() || '';
           return `${materia} - ${ora}h - ${formatPrice(parseFloat(importo) || 0)}`;
         })
-        .join('\n');
+        .filter(Boolean)
+        .join(';');
     },
   },
 ];
+
 
 const GestioneInsegnanti: React.FC = () => {
   const navigate = useNavigate();

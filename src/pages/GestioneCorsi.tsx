@@ -64,18 +64,43 @@ const corsiExcelColumns = [
   {
     key: 'lezioni',
     label: 'Lezioni',
-    format: (lezioni: string[]) => {
-      if (!lezioni || lezioni.length === 0) return '';
-      return lezioni
+    format: (lezioni: unknown) => {
+      const list: string[] = Array.isArray(lezioni)
+        ? (lezioni as unknown[]).map((v) => String(v))
+        : typeof lezioni === 'string'
+          ? (() => {
+              const raw = String(lezioni || '').trim();
+              if (!raw) return [];
+
+              // Formato tipico DB: stringa con token separati da ';' che rappresentano
+              // gruppi di 3: giorno;sala;orario;giorno;sala;orario;...
+              const tokens = raw.split(';').map((t) => t.trim()).filter(Boolean);
+              if (tokens.length >= 3 && tokens.length % 3 === 0) {
+                const out: string[] = [];
+                for (let i = 0; i < tokens.length; i += 3) {
+                  out.push(`${tokens[i]};${tokens[i + 1]};${tokens[i + 2]}`);
+                }
+                return out;
+              }
+
+              // Fallback: separatori alternativi tra lezioni
+              return raw.split(/\r?\n|\|/).map((s) => s.trim()).filter(Boolean);
+            })()
+          : [];
+
+      if (list.length === 0) return '';
+
+      return list
         .map((lezione) => {
-          const parts = lezione.split(';');
+          const parts = String(lezione).split(';');
           const giorno = parts[0]?.trim() || '';
           const sala = parts[1]?.trim() || '';
           const orario = parts[2]?.trim() || '';
           return `${giorno} - ${sala} - ${orario}`;
         })
-        .join('\n');
-    }
+        .filter(Boolean)
+        .join(';');
+    },
   },
   { key: 'prezzoBase', label: 'Prezzo Base', format: formatPrice },
   { key: 'prezzoAggiuntivo', label: 'Prezzo Agg.', format: formatPrice },

@@ -11,7 +11,21 @@ export function exportAccademiaExcel(items: Accademia[], columns: Column[]): voi
   const data = items.map((item) => {
     const row: Record<string, any> = {};
     columns.forEach((col) => {
-      const value = (item as any)[col.key];
+      let value = (item as any)[col.key];
+
+      // Normalizza il campo "corsi" con separatore ';'
+      if (col.key === 'corsi') {
+        if (Array.isArray(value)) {
+          value = value.map(v => String(v).trim()).filter(Boolean).join(';');
+        } else if (typeof value === 'string') {
+          value = value
+            .split(/\r?\n|;|,/) // accetta newline, ';' o ',' in input
+            .map(s => s.trim())
+            .filter(Boolean)
+            .join(';');
+        }
+      }
+
       row[col.label] = typeof col.format === 'function' ? col.format(value) : value;
     });
     return row;

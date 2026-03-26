@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { exportFattureExcel } from '../utils/exportFattureExcel';
+import { exportQuoteSaggioExcel } from '../utils/exportQuoteSaggioExcel';
 import Box from '@mui/material/Box';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -752,6 +753,32 @@ const Soci: React.FC = () => {
         >
           Export Excel
         </Button>)}
+
+        {profile?.role !== "reader" && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+            sx={{ fontWeight: 600, textTransform: 'none' }}
+            onClick={() => {
+              const rows = (fattureConSoci || []).map((row: any) => {
+                const { pagata, totale } = getQuotaSaggioPagata(row);
+                const restante = Math.max(0, (totale || 0) - (pagata || 0));
+                return {
+                  nome: String(row?.nome || ''),
+                  cognome: String(row?.cognome || ''),
+                  totalePrevisto: totale || 0,
+                  pagata: pagata || 0,
+                  restante,
+                };
+              });
+
+              exportQuoteSaggioExcel(rows);
+            }}
+          >
+            Export quote saggio
+          </Button>
+        )}
       </Box>
 
       <DataTable

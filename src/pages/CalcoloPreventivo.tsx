@@ -12,6 +12,17 @@ import { parseListTokens } from '../utils/listTokens';
 const CalcoloPreventivo: React.FC = () => {
 		const { profile } = require('../contexts/AuthContext').useAuth();
 	const { data: importiPreventivo = [] } = useSupabaseData<ImportoPreventivo>('ImportiPreventivo');
+
+	// NB: non usare indici (importiPreventivo[4], ecc.) perché l'ordine può cambiare.
+	// Usiamo l'id (assunto stabile) per recuperare i valori necessari.
+	const importiPreventivoById = useMemo(() => {
+		const map = new Map<string, ImportoPreventivo>();
+		importiPreventivo.forEach((item) => {
+			if (item?.id) map.set(String(item.id), item);
+		});
+		return map;
+	}, [importiPreventivo]);
+	const getImportoPreventivo = (id: string) => importiPreventivoById.get(String(id));
 	const [checkedExtras, setCheckedExtras] = useState<boolean[]>([false, false, false, false]);
 	const [checkedQuotaSaggio, setCheckedQuotaSaggio] = useState<boolean>(false);
 
@@ -22,6 +33,13 @@ const CalcoloPreventivo: React.FC = () => {
 	};
 
 	const { data: tipiIscrizione = [] } = useSupabaseData<TipoIscrizione>('TipoIscrizione');
+	const tipiIscrizioneById = useMemo(() => {
+		const map = new Map<string, TipoIscrizione>();
+		tipiIscrizione.forEach((t) => {
+			if (t?.id) map.set(String(t.id), t);
+		});
+		return map;
+	}, [tipiIscrizione]);
 	const { data: corsi = [] } = useSupabaseData<Corso>('Corsi');
 	const { data: categorie = [] } = useSupabaseData<any>('CategorieCorsi');
 	const { data: accademia = [] } = useSupabaseData<Accademia>('Accademia');
@@ -40,7 +58,7 @@ const CalcoloPreventivo: React.FC = () => {
     const [editingSocio, setEditingSocio] = useState<Socio | null>(null);
 
 	// Helpers
-	const tipoValue = useMemo(() => tipiIscrizione.find(t => t.id === selectedTipo)?.value || '', [selectedTipo, tipiIscrizione]);
+	const tipoValue = useMemo(() => tipiIscrizioneById.get(String(selectedTipo))?.value || '', [selectedTipo, tipiIscrizioneById]);
 	// Ordina corsi per categoria, poi nomeCorso
 	const sortedCorsi = useMemo(() => {
 		return [...corsi].sort((a, b) => {
@@ -174,6 +192,7 @@ const CalcoloPreventivo: React.FC = () => {
 	}, [extraImporti, importoBase, subtotalCorsi, subtotalCorsiTotale, subtotalCorsiScontato]);
 	// Arrotondamento a multiplo di 5 euro
 	const arrotonda5 = (val: number) => Math.round(val / 5) * 5;
+	const arrotonda5PerDifetto = (val: number) => Math.floor(val / 5) * 5;
 
 	// Importo finale corsi (Excel: =PIÙ.SE(D29;E29;D32;E32;D27;E27;D30;E30;D31;E31))
 	// Qui implementiamo la stessa logica: scegli il primo valore valido in base alle checkbox (senza sommare gli sconti).
@@ -256,15 +275,18 @@ const CalcoloPreventivo: React.FC = () => {
 	};
 	
 	// Calcolo totali richiesti
-	const quotaSaggio = checkedQuotaSaggio && importiPreventivo[4] ? parseFloat(importiPreventivo[4].valore) : 0;
+	const quotaSaggioItem = getImportoPreventivo('5');
+	const quotaSaggio = checkedQuotaSaggio && quotaSaggioItem ? parseFloat(quotaSaggioItem.valore) : 0;
 	const iscrizioneTotale = arrotonda5(parseFloat(tipoValue) || 0);
-	const quotaMensile = arrotonda5(importoFinaleCorsi + quotaSaggio);
-	const percentualeScontoTrimestre = importiPreventivo[5] && importiPreventivo[5].valore
-		? 1 - (parseFloat(importiPreventivo[5].valore.replace('%', '')) / 100)
+	const quotaMensile = arrotonda5PerDifetto(importoFinaleCorsi + quotaSaggio);
+	const scontoTrimestreItem = getImportoPreventivo('6');
+	const percentualeScontoTrimestre = scontoTrimestreItem?.valore
+		? 1 - (parseFloat(scontoTrimestreItem.valore.replace('%', '')) / 100)
 		: 1;
 	const quotaTrimestraleScontata = arrotonda5(((quotaMensile - quotaSaggio) * 3 * percentualeScontoTrimestre) + (quotaSaggio * 3));
-	const percentualeScontoAnnuale = importiPreventivo[6] && importiPreventivo[6].valore
-		? 1 - (parseFloat(importiPreventivo[6].valore.replace('%', '')) / 100)
+	const scontoAnnualeItem = getImportoPreventivo('7');
+	const percentualeScontoAnnuale = scontoAnnualeItem?.valore
+		? 1 - (parseFloat(scontoAnnualeItem.valore.replace('%', '')) / 100)
 		: 1;
 	const quotaAnnualeScontata = arrotonda5(((quotaMensile - quotaSaggio) * 9 * percentualeScontoAnnuale) + (quotaSaggio * 9));
 
@@ -353,7 +375,7 @@ const CalcoloPreventivo: React.FC = () => {
 			base: toggleBaseAccademia === 'base' ? baseNome : '',
 			accademia: toggleBaseAccademia === 'accademia' ? selectedAccademiaBase : '',
 			corsi: corsiNomi,
-			quotaSaggio: checkedQuotaSaggio && importiPreventivo[4] ? importiPreventivo[4].valore : '',
+			quotaSaggio: checkedQuotaSaggio && quotaSaggioItem ? quotaSaggioItem.valore : '',
 			cognome: '',
 			nome: '',
 			codFiscale: '',
@@ -393,7 +415,7 @@ const CalcoloPreventivo: React.FC = () => {
 			base: toggleBaseAccademia === 'base' ? baseNome : '',
 			accademia: toggleBaseAccademia === 'accademia' ? selectedAccademiaBase : '',
 			corsi: corsiNomi,
-			quotaSaggio: checkedQuotaSaggio && importiPreventivo[4] ? importiPreventivo[4].valore : '',
+			quotaSaggio: checkedQuotaSaggio && quotaSaggioItem ? quotaSaggioItem.valore : '',
 			// Anagrafica (from socio)
 			cognome: socio.cognome || '',
 			nome: socio.nome || '',
@@ -830,9 +852,9 @@ const CalcoloPreventivo: React.FC = () => {
 										   />
 									   </Box>
 									   <Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-										   {checkedQuotaSaggio && importiPreventivo[4] && (
+										   {checkedQuotaSaggio && quotaSaggioItem && (
 											   <Typography sx={{ fontWeight: 500, textAlign: 'right', color: '#1976d2' }}>
-												   <span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{importiPreventivo[4].valore} €</span>
+												   <span style={{ display: 'inline-block', minWidth: 60, textAlign: 'right' }}>{quotaSaggioItem.valore} €</span>
 											   </Typography>
 										   )}
 									   </Box>
@@ -860,7 +882,7 @@ const CalcoloPreventivo: React.FC = () => {
 											   </Box>
 										   </Box>
 										   <Box display="flex" alignItems="center" gap={2}>
-											   <Typography sx={{ minWidth: 180, fontWeight: 500, textAlign: 'left' }}>Quota trimestrale scontata {importiPreventivo[5]?.valore || ''}</Typography>
+											   <Typography sx={{ minWidth: 180, fontWeight: 500, textAlign: 'left' }}>Quota trimestrale scontata {scontoTrimestreItem?.valore || ''}</Typography>
 											   <Box sx={{ flex: 1 }} />
 											   <Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
 												   <Typography sx={{ fontWeight: 900, textAlign: 'right', color: '#1976d2' }}>
@@ -869,7 +891,7 @@ const CalcoloPreventivo: React.FC = () => {
 											   </Box>
 										   </Box>
 										   <Box display="flex" alignItems="center" gap={2}>
-											   <Typography sx={{ minWidth: 180, fontWeight: 500, textAlign: 'left' }}>Quota annuale scontata {importiPreventivo[6]?.valore || ''}</Typography>
+											   <Typography sx={{ minWidth: 180, fontWeight: 500, textAlign: 'left' }}>Quota annuale scontata {scontoAnnualeItem?.valore || ''}</Typography>
 											   <Box sx={{ flex: 1 }} />
 											   <Box sx={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
 												   <Typography sx={{ fontWeight: 900, textAlign: 'right', color: '#1976d2' }}>
@@ -883,14 +905,14 @@ const CalcoloPreventivo: React.FC = () => {
 									   {/* IBAN e Intestato a */}
 									   <Box mt={2} display="flex" justifyContent="flex-start" alignItems="center" gap={2}>
 										   <Box sx={{ flex: 1 }}>
-											   {importiPreventivo[7]?.valore && (
+											   {getImportoPreventivo('8')?.valore && (
 												   <Typography variant="body2" sx={{ color: '#888', fontSize: 13 }}>
-													   IBAN: {importiPreventivo[7].valore}
+													   IBAN: {getImportoPreventivo('8')?.valore}
 												   </Typography>
 											   )}
-											   {importiPreventivo[8]?.valore && (
+											   {getImportoPreventivo('9')?.valore && (
 												   <Typography variant="body2" sx={{ color: '#888', fontSize: 13 }}>
-													   Intestato a: {importiPreventivo[8].valore}
+													   Intestato a: {getImportoPreventivo('9')?.valore}
 												   </Typography>
 											   )}
 										   </Box>
