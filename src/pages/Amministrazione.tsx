@@ -101,7 +101,11 @@ const Amministrazione: React.FC = () => {
   const { data: tipiIscrizione, create: createTipoIscrizione, update: updateTipoIscrizione, remove: removeTipoIscrizione } = useSupabaseData<TipoIscrizione>('TipoIscrizione', { userName: profile?.userName || 'Unknown' });
   const { data: importiPreventivo, create: createImportoPreventivo, update: updateImportoPreventivo, remove: removeImportoPreventivo } = useSupabaseData<ImportoPreventivo>('ImportiPreventivo', { userName: profile?.userName || 'Unknown' });
   const { data: soci = [], update: updateSocio } = useSupabaseData<Socio>('Soci', { userName: profile?.userName || 'Unknown' });
-  const { data: logs, removeAll: removeAllLogs } = useSupabaseData<Log>('Logs', { userName: profile?.userName || 'Unknown' });
+  const { data: logs, removeAll: removeAllLogs } = useSupabaseData<Log>(
+    'Logs',
+    { userName: profile?.userName || 'Unknown' },
+    { column: 'id', ascending: false }
+  );
   const { errors, validate, clearAllErrors } = useFormValidation();
 
   const joinValues = (values: Array<unknown>) => values.map((v) => (v === null || v === undefined ? '' : String(v))).join('-');
@@ -110,8 +114,7 @@ const Amministrazione: React.FC = () => {
     joinValues([
       u.id,
       u.userName,
-      // Evita di loggare password in chiaro
-      u.password ? '***' : '',
+      u.email,
       u.role,
       u.full_name,
     ]);
@@ -177,7 +180,7 @@ const Amministrazione: React.FC = () => {
     if (currentSection === 'users') {
       isValid = validate(form, {
         userName: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('username') },
-        password: { required: !editingItem, message: ERROR_MESSAGES.REQUIRED_FIELD('password') },
+        email: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('email') },
         role: { required: true, message: ERROR_MESSAGES.REQUIRED_FIELD('role') },
       });
       if (!isValid) {
@@ -410,7 +413,7 @@ const Amministrazione: React.FC = () => {
 
   const usersColumns = [
     { key: 'userName', label: 'Username', width: '40%' },
-    { key: 'password', label: 'Password', width: '30%' },
+    { key: 'email', label: 'Email', width: '30%' },
     { key: 'role', label: 'Role', width: '30%' },
   ];
 
@@ -506,9 +509,6 @@ const Amministrazione: React.FC = () => {
           title="Utenti"
           columns={usersColumns}
           data={users}
-          onAdd={() => handleOpenDialog()}
-          onEdit={handleOpenDialog}
-          onDelete={handleDelete}
           emptyMessage="Nessun utente presente"
         />
       )}
@@ -564,13 +564,13 @@ const Amministrazione: React.FC = () => {
                   helperText={errors.userName}
                 />
                 <TextField
-                  label="Password"
-                  type="password"
+                  label="Email"
+                  type="email"
                   fullWidth
-                  value={form.password || ''}
-                  onChange={(e) => handleChange('password', e.target.value)}
-                  error={!!errors.password}
-                  helperText={errors.password || (editingItem ? 'Lascia vuoto per non modificare' : '')}
+                  value={form.email || ''}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  error={!!errors.email}
+                  helperText={errors.email || ''}
                 />
                 <TextField
                   select

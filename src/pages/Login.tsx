@@ -53,7 +53,7 @@ const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit}>
             <TextField
-              label="Username"
+              label="Email"
               type="text"
               fullWidth
               margin="normal"

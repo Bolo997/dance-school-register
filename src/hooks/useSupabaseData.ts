@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../config/supabase';
 import { createCreatoModificato } from '../utils/helpers';
+import { useAuth } from '../contexts/AuthContext';
 
 interface UseSupabaseDataOptions {
   userName?: string;
@@ -24,6 +25,7 @@ export function useSupabaseData<T extends { id: string }>(
   options: UseSupabaseDataOptions = {},
   orderBy: { column: string; ascending: boolean } | null = null
 ): UseSupabaseDataReturn<T> {
+  const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +113,16 @@ export function useSupabaseData<T extends { id: string }>(
   }, [tableName, reload]);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setData([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     reload();
-  }, [reload]);
+  }, [reload, user, authLoading]);
 
   return { data, loading, error, reload, create, update, remove, removeAll };
 }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
 import { UserProfile } from '../types';
 
@@ -7,7 +7,7 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: (userName: string, password: string) => Promise<void>;
+  signIn: (emailOrUsername: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -18,45 +18,115 @@ export const AuthProvider = React.memo<{ children: React.ReactNode }>(({ childre
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const savedProfile = localStorage.getItem('profile');
-    
-    if (savedUser && savedProfile) {
-      setUser(JSON.parse(savedUser));
-      setProfile(JSON.parse(savedProfile));
+  const fetchProfile = useCallback(async (sessionUser: User | null) => {
+    if (!sessionUser) {
+      setProfile(null);
+      return;
     }
-    setLoading(false);
+
+    // Tabella `Users` con colonna `uid` collegata a auth.users.id
+    try {
+      const { data, error } = await supabase
+        .from('Users')
+        .select('*')
+        .eq('uid', sessionUser.id)
+        .maybeSingle();
+
+      if (error) {
+        setProfile(null);
+        return;
+      }
+
+      setProfile((data as unknown as UserProfile) ?? null);
+    } catch {
+      setProfile(null);
+    }
   }, []);
 
-  const signIn = useCallback(async (userName: string, password: string) => {
-    const { data: users, error } = await supabase
-      .from('Users')
-      .select('*')
-      .eq('userName', userName)
-      .eq('password', password);
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (error) {
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
+        const session = data.session;
+        setUser(session?.user ?? null);
+        // Non bloccare mai la UI su un profilo che non c’è o policy/rls temporanee.
+        fetchProfile(session?.user ?? null).catch(() => {
+          /* noop */
+        });
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    bootstrap();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session: Session | null) => {
+      if (!mounted) return;
+      setUser(session?.user ?? null);
+      fetchProfile(session?.user ?? null).catch(() => {
+        /* noop */
+      });
+      setLoading(false);
+    });
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Su ritorno in foreground, riallinea sessione/token e profilo.
+        supabase.auth
+          .getSession()
+          .then(({ data }) => {
+            if (!mounted) return;
+            setUser(data.session?.user ?? null);
+            fetchProfile(data.session?.user ?? null).catch(() => {
+              /* noop */
+            });
+          })
+          .catch(() => {
+            /* noop */
+          });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      mounted = false;
+      subscription.subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [fetchProfile]);
+
+  const signIn = useCallback(async (emailOrUsername: string, password: string) => {
+    // Supabase Auth richiede email+password. Se in UI usi “username”, mappalo ad una email.
+    // Qui assumiamo che l’input sia già un’email valida.
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailOrUsername,
+      password
+    });
 
     if (error) {
-      throw new Error('Errore durante la verifica: ' + error.message);
+      throw new Error(error.message);
     }
 
-    if (!users || users.length === 0) {
-      throw new Error('Username o password non validi');
-    }
-
-    const user = { id: users[0].id, email: users[0].userName } as User;
-    setUser(user);
-    setProfile(users[0]);
-    
-    localStorage.setItem('user', JSON.stringify(user));
-    localStorage.setItem('profile', JSON.stringify(users[0]));
-  }, []);
+    setUser(data.user);
+    await fetchProfile(data.user);
+  }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('profile');
   }, []);
 
   const value = useMemo(() => ({

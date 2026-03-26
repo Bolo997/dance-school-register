@@ -49,7 +49,8 @@ export interface Fattura {
 export interface UserProfile {
   id: string;
   userName: string;
-  password?: string;
+  email?: string;
+  uid?: string;
   role: string;
   full_name?: string;
 }
