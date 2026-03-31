@@ -61,3 +61,4 @@ I file `.dump` sono in formato `pg_dump --format=custom`.
 ## Limiti importanti
 
 - Gli artifact di GitHub non sono un “cold storage” infinito: hanno retention limitata. Se ti serve un backup a lungo termine, conviene inviare l’archivio su uno storage esterno (S3/Azure/GCS) usando secrets dedicati.
+- Su alcuni runner GitHub può comparire un errore tipo `Network is unreachable` perché la DNS di Supabase risolve prima su IPv6. Lo script prova automaticamente un fallback su IPv4.

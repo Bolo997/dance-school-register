@@ -21,10 +21,78 @@ command -v psql >/dev/null 2>&1 || { echo "psql not found (install postgresql-cl
 command -v pg_dump >/dev/null 2>&1 || { echo "pg_dump not found (install postgresql-client)"; exit 2; }
 command -v tar >/dev/null 2>&1 || { echo "tar not found"; exit 2; }
 
+try_psql() {
+  local url="$1"
+  local out
+
+  set +e
+  out=$(psql "$url" -v ON_ERROR_STOP=1 -c "select 1;" 2>&1)
+  local code=$?
+  set -e
+
+  if [[ $code -ne 0 ]]; then
+    echo "$out" >&2
+  fi
+  return $code
+}
+
+append_hostaddr_ipv4() {
+  python3 - <<'PY'
+import os, socket, sys
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+url = os.environ.get('SUPABASE_DB_URL')
+if not url:
+  sys.exit(2)
+
+u = urlparse(url)
+host = u.hostname
+port = u.port or 5432
+if not host:
+  print(url)
+  sys.exit(0)
+
+try:
+  infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+except Exception:
+  print(url)
+  sys.exit(0)
+
+ip = infos[0][4][0]
+q = dict(parse_qsl(u.query, keep_blank_values=True))
+q['hostaddr'] = ip
+new_query = urlencode(q)
+
+out = urlunparse((u.scheme, u.netloc, u.path, u.params, new_query, u.fragment))
+print(out)
+PY
+}
+
 mkdir -p "$OUT_DIR/$TIMESTAMP"
 
-# Validate connection (fail fast)
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select 1;" >/dev/null
+# Validate connection (fail fast) with IPv4 fallback.
+# GitHub-hosted runners may not have IPv6 connectivity; Supabase DNS can resolve to IPv6 first.
+if ! try_psql "$SUPABASE_DB_URL" >/dev/null; then
+  if [[ "$SUPABASE_DB_URL" == *"hostaddr="* ]]; then
+    echo "Connection failed and hostaddr is already set; aborting." >&2
+    exit 2
+  fi
+
+  echo "Initial connection failed; retrying with IPv4 hostaddr fallback..." >&2
+  ipv4_url="$(append_hostaddr_ipv4)"
+  if [[ -z "$ipv4_url" || "$ipv4_url" == "$SUPABASE_DB_URL" ]]; then
+    echo "Could not resolve an IPv4 address for the DB host; aborting." >&2
+    exit 2
+  fi
+
+  if try_psql "$ipv4_url" >/dev/null; then
+    SUPABASE_DB_URL="$ipv4_url"
+    echo "Connected using IPv4 hostaddr fallback." >&2
+  else
+    echo "Connection failed even with IPv4 fallback; aborting." >&2
+    exit 2
+  fi
+fi
 
 # Basic metadata (helps auditing what was backed up)
 psql "$SUPABASE_DB_URL" -At -v ON_ERROR_STOP=1 -c "select version();" > "$OUT_DIR/$TIMESTAMP/pg_version.txt"
