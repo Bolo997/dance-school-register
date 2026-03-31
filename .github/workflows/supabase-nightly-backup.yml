@@ -1,0 +1,70 @@
+name: Supabase nightly backup
+
+on:
+  schedule:
+    # GitHub Actions cron is UTC only (no timezone support).
+    # To run at 15:00 Europe/Rome year-round (CET/CEST), schedule both 13:00 and 14:00 UTC
+    # and gate execution by checking the local hour in Europe/Rome.
+    - cron: '0 13 * * *'
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      schemas:
+        description: 'Comma-separated schemas to backup (default: public)'
+        required: false
+        default: 'public'
+      run_full_dump:
+        description: 'Create also a full database dump (true|false)'
+        required: false
+        default: 'true'
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Time gate (15:00 Europe/Rome)
+        id: timegate
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          local_hour="$(TZ=Europe/Rome date +%H)"
+          if [[ "$local_hour" == "15" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: local hour in Europe/Rome is $local_hour (not 15)."
+          fi
+
+      - name: Install PostgreSQL client
+        if: steps.timegate.outputs.should_run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Run backup script
+        if: steps.timegate.outputs.should_run == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # github.event.inputs exists only for workflow_dispatch; on schedule it's empty and the script defaults.
+          SCHEMAS: ${{ github.event.inputs.schemas }}
+          RUN_FULL_DUMP: ${{ github.event.inputs.run_full_dump }}
+        run: |
+          bash scripts/supabase-backup.sh
+
+      - name: Upload backup artifact
+        if: steps.timegate.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.run_id }}
+          path: backup_out/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
