@@ -54,6 +54,8 @@ jobs:
         if: steps.timegate.outputs.should_run == 'true'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # Optional: set this to a Supabase Connection Pooler URI if the direct DB host is unreachable from GitHub runners.
+          SUPABASE_DB_URL_FALLBACK: ${{ secrets.SUPABASE_DB_URL_POOLER }}
           # github.event.inputs exists only for workflow_dispatch; on schedule it's empty and the script defaults.
           SCHEMAS: ${{ github.event.inputs.schemas }}
           RUN_FULL_DUMP: ${{ github.event.inputs.run_full_dump }}

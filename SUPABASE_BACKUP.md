@@ -16,6 +16,10 @@ Questa repo include una GitHub Action che, ogni notte, si collega al database Po
 - Valore: connection string Postgres (con SSL), ad esempio:
   - `postgresql://postgres:<PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require`
 
+Opzionale (ma consigliato se il runner GitHub non riesce a raggiungere `db.<PROJECT_REF>.supabase.co`):
+- Nome: `SUPABASE_DB_URL_POOLER`
+- Valore: connection string **Connection Pooler** (modalità *Session* se disponibile), con SSL.
+
 > Nota: non usare la `anon key` dell’app. Per i backup serve la connessione Postgres.
 
 ### Dove recuperare la connection string su Supabase
@@ -24,6 +28,10 @@ Nel progetto Supabase:
 - Vai in **Project Settings** → **Database** (o sezione equivalente) → **Connection string**
 - Seleziona formato **URI** (Postgres)
 - Copia l’URI e assicurati che includa `sslmode=require`
+
+Per la pooler URI:
+- Vai in **Project Settings** → **Database** → **Connection pooling** (o sezione equivalente)
+- Copia la connection string in formato **URI** (preferibilmente *Session* per operazioni lunghe come `pg_dump`)
 
 Tipicamente:
 - host: `db.<PROJECT_REF>.supabase.co`

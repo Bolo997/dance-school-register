@@ -4,6 +4,8 @@ set -euo pipefail
 # Nightly Supabase Postgres backup (per-table + optional full dump)
 # Required env:
 #   SUPABASE_DB_URL  (GitHub Secret) e.g. postgresql://postgres:***@db.<ref>.supabase.co:5432/postgres?sslmode=require
+# Optional fallback env (recommended if GitHub runners can't reach the direct DB host):
+#   SUPABASE_DB_URL_FALLBACK e.g. a Supabase connection pooler URI
 # Optional env:
 #   SCHEMAS       Comma-separated list of schemas to backup (default: public)
 #   OUT_DIR       Output directory (default: backup_out)
@@ -35,6 +37,20 @@ try_psql() {
     echo "$out" >&2
   fi
   return $code
+}
+
+connection_label() {
+  local url="$1"
+  python3 - <<'PY'
+import os, sys
+from urllib.parse import urlparse
+
+url = sys.stdin.read().strip()
+u = urlparse(url)
+host = u.hostname or "?"
+port = u.port or "?"
+print(f"{host}:{port}")
+PY
 }
 
 append_hostaddr_ipv4() {
@@ -87,27 +103,44 @@ PY
 
 mkdir -p "$OUT_DIR/$TIMESTAMP"
 
-# Validate connection (fail fast) with IPv4 fallback.
+# Validate connection (fail fast) with fallback URL and IPv4 hostaddr workaround.
 # GitHub-hosted runners may not have IPv6 connectivity; Supabase DNS can resolve to IPv6 first.
 if ! try_psql "$SUPABASE_DB_URL" >/dev/null; then
-  if [[ "$SUPABASE_DB_URL" == *"hostaddr="* ]]; then
-    echo "Connection failed and hostaddr is already set; aborting." >&2
-    exit 2
+  if [[ -n "${SUPABASE_DB_URL_FALLBACK:-}" ]]; then
+    echo "Primary connection failed; trying fallback URL..." >&2
+    if try_psql "$SUPABASE_DB_URL_FALLBACK" >/dev/null; then
+      SUPABASE_DB_URL="$SUPABASE_DB_URL_FALLBACK"
+      echo "Connected using fallback URL ($(printf %s "$SUPABASE_DB_URL" | connection_label))." >&2
+    else
+      echo "Fallback URL also failed." >&2
+    fi
   fi
 
-  echo "Initial connection failed; retrying with IPv4 hostaddr fallback..." >&2
-  ipv4_url="$(append_hostaddr_ipv4)"
-  if [[ -z "$ipv4_url" || "$ipv4_url" == "$SUPABASE_DB_URL" ]]; then
-    echo "Could not resolve an IPv4 address for the DB host; aborting." >&2
-    exit 2
-  fi
-
-  if try_psql "$ipv4_url" >/dev/null; then
-    SUPABASE_DB_URL="$ipv4_url"
-    echo "Connected using IPv4 hostaddr fallback." >&2
+  # If fallback connected, continue.
+  if try_psql "$SUPABASE_DB_URL" >/dev/null; then
+    :
   else
-    echo "Connection failed even with IPv4 fallback; aborting." >&2
-    exit 2
+    # Otherwise attempt IPv4 hostaddr forcing.
+    if [[ "$SUPABASE_DB_URL" == *"hostaddr="* ]]; then
+      echo "Connection failed and hostaddr is already set; aborting." >&2
+      exit 2
+    fi
+
+    echo "Initial connection failed; retrying with IPv4 hostaddr fallback..." >&2
+    ipv4_url="$(append_hostaddr_ipv4)"
+    if [[ -z "$ipv4_url" || "$ipv4_url" == "$SUPABASE_DB_URL" ]]; then
+      echo "Could not resolve an IPv4 address for the DB host; aborting." >&2
+      echo "Tip: use a Supabase Connection Pooler URI as SUPABASE_DB_URL_FALLBACK (or replace SUPABASE_DB_URL)." >&2
+      exit 2
+    fi
+
+    if try_psql "$ipv4_url" >/dev/null; then
+      SUPABASE_DB_URL="$ipv4_url"
+      echo "Connected using IPv4 hostaddr fallback ($(printf %s "$SUPABASE_DB_URL" | connection_label))." >&2
+    else
+      echo "Connection failed even with IPv4 fallback; aborting." >&2
+      exit 2
+    fi
   fi
 fi
 
