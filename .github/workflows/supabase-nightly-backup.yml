@@ -44,11 +44,18 @@ jobs:
             echo "Skipping: local hour in Europe/Rome is $local_hour (not 15)."
           fi
 
-      - name: Install PostgreSQL client
+      - name: Install PostgreSQL client (v17)
         if: steps.timegate.outputs.should_run == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client
+          sudo apt-get install -y --no-install-recommends ca-certificates wget gnupg lsb-release
+
+          sudo install -d /usr/share/postgresql-common/pgdg
+          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
 
       - name: Run backup script
         if: steps.timegate.outputs.should_run == 'true'

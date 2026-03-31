@@ -40,12 +40,15 @@ try_psql() {
 }
 
 connection_label() {
-  local url="$1"
-  python3 - <<'PY'
-import os, sys
+  local url="${1:-}"
+  if [[ -z "$url" ]]; then
+    url="$(cat)"
+  fi
+  python3 - "$url" <<'PY'
+import sys
 from urllib.parse import urlparse
 
-url = sys.stdin.read().strip()
+url = sys.argv[1] if len(sys.argv) > 1 else ""
 u = urlparse(url)
 host = u.hostname or "?"
 port = u.port or "?"
@@ -110,7 +113,7 @@ if ! try_psql "$SUPABASE_DB_URL" >/dev/null; then
     echo "Primary connection failed; trying fallback URL..." >&2
     if try_psql "$SUPABASE_DB_URL_FALLBACK" >/dev/null; then
       SUPABASE_DB_URL="$SUPABASE_DB_URL_FALLBACK"
-      echo "Connected using fallback URL ($(printf %s "$SUPABASE_DB_URL" | connection_label))." >&2
+      echo "Connected using fallback URL ($(connection_label "$SUPABASE_DB_URL"))." >&2
     else
       echo "Fallback URL also failed." >&2
     fi
@@ -136,7 +139,7 @@ if ! try_psql "$SUPABASE_DB_URL" >/dev/null; then
 
     if try_psql "$ipv4_url" >/dev/null; then
       SUPABASE_DB_URL="$ipv4_url"
-      echo "Connected using IPv4 hostaddr fallback ($(printf %s "$SUPABASE_DB_URL" | connection_label))." >&2
+      echo "Connected using IPv4 hostaddr fallback ($(connection_label "$SUPABASE_DB_URL"))." >&2
     else
       echo "Connection failed even with IPv4 fallback; aborting." >&2
       exit 2
