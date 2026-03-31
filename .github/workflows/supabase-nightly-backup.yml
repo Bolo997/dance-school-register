@@ -63,10 +63,13 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           # Optional: set this to a Supabase Connection Pooler URI if the direct DB host is unreachable from GitHub runners.
           SUPABASE_DB_URL_FALLBACK: ${{ secrets.SUPABASE_DB_URL_POOLER }}
+          PG_BIN_DIR: /usr/lib/postgresql/17/bin
           # github.event.inputs exists only for workflow_dispatch; on schedule it's empty and the script defaults.
           SCHEMAS: ${{ github.event.inputs.schemas }}
           RUN_FULL_DUMP: ${{ github.event.inputs.run_full_dump }}
         run: |
+          echo "psql version:"; /usr/lib/postgresql/17/bin/psql --version || true
+          echo "pg_dump version:"; /usr/lib/postgresql/17/bin/pg_dump --version || true
           bash scripts/supabase-backup.sh
 
       - name: Upload backup artifact

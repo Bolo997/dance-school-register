@@ -24,12 +24,37 @@ command -v pg_dump >/dev/null 2>&1 || { echo "pg_dump not found (install postgre
 command -v tar >/dev/null 2>&1 || { echo "tar not found"; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 not found"; exit 2; }
 
+PSQL_BIN="psql"
+PG_DUMP_BIN="pg_dump"
+
+# Prefer an explicit PG bin dir when available (e.g., /usr/lib/postgresql/17/bin on Ubuntu).
+if [[ -n "${PG_BIN_DIR:-}" ]]; then
+  if [[ -x "$PG_BIN_DIR/psql" && -x "$PG_BIN_DIR/pg_dump" ]]; then
+    PSQL_BIN="$PG_BIN_DIR/psql"
+    PG_DUMP_BIN="$PG_BIN_DIR/pg_dump"
+  fi
+elif [[ -x "/usr/lib/postgresql/17/bin/psql" && -x "/usr/lib/postgresql/17/bin/pg_dump" ]]; then
+  PSQL_BIN="/usr/lib/postgresql/17/bin/psql"
+  PG_DUMP_BIN="/usr/lib/postgresql/17/bin/pg_dump"
+fi
+
+# Validate binaries (supports both PATH lookups and absolute paths).
+if ! $PSQL_BIN --version >/dev/null 2>&1; then
+  echo "psql not found (install postgresql-client)" >&2
+  exit 2
+fi
+
+if ! $PG_DUMP_BIN --version >/dev/null 2>&1; then
+  echo "pg_dump not found (install postgresql-client)" >&2
+  exit 2
+fi
+
 try_psql() {
   local url="$1"
   local out
 
   set +e
-  out=$(psql "$url" -v ON_ERROR_STOP=1 -c "select 1;" 2>&1)
+  out=$($PSQL_BIN "$url" -v ON_ERROR_STOP=1 -c "select 1;" 2>&1)
   local code=$?
   set -e
 
@@ -148,7 +173,7 @@ if ! try_psql "$SUPABASE_DB_URL" >/dev/null; then
 fi
 
 # Basic metadata (helps auditing what was backed up)
-psql "$SUPABASE_DB_URL" -At -v ON_ERROR_STOP=1 -c "select version();" > "$OUT_DIR/$TIMESTAMP/pg_version.txt"
+$PSQL_BIN "$SUPABASE_DB_URL" -At -v ON_ERROR_STOP=1 -c "select version();" > "$OUT_DIR/$TIMESTAMP/pg_version.txt"
 date -u > "$OUT_DIR/$TIMESTAMP/created_utc.txt"
 echo "$SCHEMAS" > "$OUT_DIR/$TIMESTAMP/schemas.txt"
 
@@ -168,7 +193,7 @@ for raw_schema in "${schema_arr[@]}"; do
 
   echo "Listing tables in schema: $schema"
   tables="$(
-    psql "$SUPABASE_DB_URL" -At -v ON_ERROR_STOP=1 \
+    $PSQL_BIN "$SUPABASE_DB_URL" -At -v ON_ERROR_STOP=1 \
       -c "select tablename from pg_tables where schemaname='${schema}' order by tablename;"
   )"
 
@@ -187,7 +212,7 @@ for raw_schema in "${schema_arr[@]}"; do
     out_file="$OUT_DIR/$TIMESTAMP/tables/$schema/${table}.dump"
 
     echo "Dumping $schema.$table"
-    pg_dump "$SUPABASE_DB_URL" \
+    $PG_DUMP_BIN "$SUPABASE_DB_URL" \
       --format=custom \
       --no-owner \
       --no-privileges \
@@ -198,7 +223,7 @@ done
 
 if [[ "$RUN_FULL_DUMP" == "true" ]]; then
   echo "Creating full database dump"
-  pg_dump "$SUPABASE_DB_URL" \
+  $PG_DUMP_BIN "$SUPABASE_DB_URL" \
     --format=custom \
     --no-owner \
     --no-privileges \
