@@ -26,7 +26,14 @@ const CalcoloPreventivo: React.FC = () => {
 	const [checkedExtras, setCheckedExtras] = useState<boolean[]>([false, false, false, false]);
 	const [checkedQuotaSaggio, setCheckedQuotaSaggio] = useState<boolean>(false);
 
-	const extraImporti = importiPreventivo.slice(0, 4);
+	// Extra importi: NON basarsi sull'ordine in tabella, ma sugli id (assunti stabili).
+	// Manteniamo lo stesso ordine logico dei 4 extra (1..4).
+	const extraImporti = useMemo(() => {
+		const EXTRA_IMPORTI_IDS = ['1', '2', '3', '4'] as const;
+		return EXTRA_IMPORTI_IDS
+			.map((id) => importiPreventivoById.get(id))
+			.filter((v): v is ImportoPreventivo => !!v);
+	}, [importiPreventivoById]);
 
 	const handleCheckExtra = (idx: number) => {
 		setCheckedExtras(prev => prev.map((v, i) => i === idx ? !v : v));
@@ -193,6 +200,7 @@ const CalcoloPreventivo: React.FC = () => {
 	// Arrotondamento a multiplo di 5 euro
 	const arrotonda5 = (val: number) => Math.round(val / 5) * 5;
 	const arrotonda5PerDifetto = (val: number) => Math.floor(val / 5) * 5;
+	const arrotonda5PerEccesso = (val: number) => Math.ceil(val / 5) * 5;
 
 	// Importo finale corsi (Excel: =PIÙ.SE(D29;E29;D32;E32;D27;E27;D30;E30;D31;E31))
 	// Qui implementiamo la stessa logica: scegli il primo valore valido in base alle checkbox (senza sommare gli sconti).
@@ -277,18 +285,18 @@ const CalcoloPreventivo: React.FC = () => {
 	// Calcolo totali richiesti
 	const quotaSaggioItem = getImportoPreventivo('5');
 	const quotaSaggio = checkedQuotaSaggio && quotaSaggioItem ? parseFloat(quotaSaggioItem.valore) : 0;
-	const iscrizioneTotale = arrotonda5(parseFloat(tipoValue) || 0);
+	const iscrizioneTotale = parseFloat(tipoValue) || 0;
 	const quotaMensile = arrotonda5PerDifetto(importoFinaleCorsi + quotaSaggio);
 	const scontoTrimestreItem = getImportoPreventivo('6');
 	const percentualeScontoTrimestre = scontoTrimestreItem?.valore
 		? 1 - (parseFloat(scontoTrimestreItem.valore.replace('%', '')) / 100)
 		: 1;
-	const quotaTrimestraleScontata = arrotonda5(((quotaMensile - quotaSaggio) * 3 * percentualeScontoTrimestre) + (quotaSaggio * 3));
+	const quotaTrimestraleScontata = arrotonda5PerEccesso(((quotaMensile - quotaSaggio) * 3 * percentualeScontoTrimestre) + (quotaSaggio * 3));
 	const scontoAnnualeItem = getImportoPreventivo('7');
 	const percentualeScontoAnnuale = scontoAnnualeItem?.valore
 		? 1 - (parseFloat(scontoAnnualeItem.valore.replace('%', '')) / 100)
 		: 1;
-	const quotaAnnualeScontata = arrotonda5(((quotaMensile - quotaSaggio) * 9 * percentualeScontoAnnuale) + (quotaSaggio * 9));
+	const quotaAnnualeScontata = arrotonda5PerDifetto(((quotaMensile - quotaSaggio) * 9 * percentualeScontoAnnuale) + (quotaSaggio * 9));
 
 	// Actions
 	const handleAddCorso = () => {
