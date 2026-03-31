@@ -42,7 +42,7 @@ Tipicamente:
 ## Come funziona
 
 Workflow: `.github/workflows/supabase-nightly-backup.yml`
-- Trigger schedulato: ogni giorno alle **15:00 ora italiana (Europe/Rome)**
+- Trigger schedulato: ogni **venerdì** alle **23:00 ora italiana (Europe/Rome)**
 - Trigger manuale: `workflow_dispatch` (puoi scegliere schema e se fare il dump completo)
 
 Script: `scripts/supabase-backup.sh`

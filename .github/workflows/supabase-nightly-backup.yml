@@ -3,10 +3,12 @@ name: Supabase nightly backup
 on:
   schedule:
     # GitHub Actions cron is UTC only (no timezone support).
-    # To run at 15:00 Europe/Rome year-round (CET/CEST), schedule both 13:00 and 14:00 UTC
-    # and gate execution by checking the local hour in Europe/Rome.
-    - cron: '0 13 * * *'
-    - cron: '0 14 * * *'
+    # To run every Friday at 23:00 Europe/Rome year-round (CET/CEST):
+    # - during CEST (UTC+2) => 21:00 UTC
+    # - during CET  (UTC+1) => 22:00 UTC
+    # Schedule both and gate execution by checking local weekday+hour in Europe/Rome.
+    - cron: '0 21 * * 5'
+    - cron: '0 22 * * 5'
   workflow_dispatch:
     inputs:
       schemas:
@@ -27,7 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Time gate (15:00 Europe/Rome)
+      - name: Time gate (Friday 23:00 Europe/Rome)
         id: timegate
         shell: bash
         run: |
@@ -37,11 +39,13 @@ jobs:
           fi
 
           local_hour="$(TZ=Europe/Rome date +%H)"
-          if [[ "$local_hour" == "15" ]]; then
+          local_dow="$(TZ=Europe/Rome date +%u)"  # 1=Mon ... 5=Fri ... 7=Sun
+
+          if [[ "$local_dow" == "5" && "$local_hour" == "23" ]]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: local hour in Europe/Rome is $local_hour (not 15)."
+            echo "Skipping: local time in Europe/Rome is DOW=$local_dow hour=$local_hour (not Friday 23)."
           fi
 
       - name: Install PostgreSQL client (v17)
