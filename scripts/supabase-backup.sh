@@ -20,6 +20,7 @@ TIMESTAMP="${TIMESTAMP:-$(date -u +%Y-%m-%dT%H-%M-%SZ)}"
 command -v psql >/dev/null 2>&1 || { echo "psql not found (install postgresql-client)"; exit 2; }
 command -v pg_dump >/dev/null 2>&1 || { echo "pg_dump not found (install postgresql-client)"; exit 2; }
 command -v tar >/dev/null 2>&1 || { echo "tar not found"; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 not found"; exit 2; }
 
 try_psql() {
   local url="$1"
@@ -39,6 +40,8 @@ try_psql() {
 append_hostaddr_ipv4() {
   python3 - <<'PY'
 import os, socket, sys
+import json
+import urllib.request
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 url = os.environ.get('SUPABASE_DB_URL')
@@ -54,11 +57,25 @@ if not host:
 
 try:
   infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+  ip = infos[0][4][0]
 except Exception:
+  # Fallback: DNS-over-HTTPS (helps when local resolver returns only AAAA or is misconfigured)
+  ip = None
+  try:
+    doh_url = f"https://dns.google/resolve?name={host}&type=A"
+    with urllib.request.urlopen(doh_url, timeout=10) as resp:
+      payload = json.loads(resp.read().decode('utf-8'))
+    for ans in payload.get('Answer', []) or []:
+      # type 1 = A
+      if ans.get('type') == 1 and isinstance(ans.get('data'), str):
+        ip = ans['data']
+        break
+  except Exception:
+    ip = None
+
+if not ip:
   print(url)
   sys.exit(0)
-
-ip = infos[0][4][0]
 q = dict(parse_qsl(u.query, keep_blank_values=True))
 q['hostaddr'] = ip
 new_query = urlencode(q)
